@@ -22,8 +22,8 @@ export function createServer() {
   if (existsSync(webDist)) {
     logger.info("serving_web_build", { webDist });
     app.use(express.static(webDist));
-    // Routage SPA : toute route non-API renvoie index.html.
-    app.get(/^(?!\/(avatars|avatar-drafts|content|admin|health)\b).*/, (_req, res) => {
+    // Routage SPA : toute route hors /api renvoie index.html (React gère /avatars, /content…).
+    app.get(/^(?!\/(api|health)\b).*/, (_req, res) => {
       res.sendFile(join(webDist, "index.html"));
     });
   }

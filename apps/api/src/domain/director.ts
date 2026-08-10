@@ -1,4 +1,5 @@
 import { extractJson } from "../lib/storage";
+import { logger } from "../logger";
 import { generateText, streamText } from "../providers/llm";
 import { VLOG_PRESETS } from "../providers/higgsfield";
 
@@ -196,10 +197,33 @@ export async function breakIntoScenes(
     `Découpe en scènes.`,
   ].filter(Boolean).join("\n\n");
 
-  const raw = await generateText(SCENES_SYSTEM, user, 2500);
-  const parsed = extractJson<{ scenes?: VlogScene[] }>(raw);
-  const scenes = normalizeScenes(parsed?.scenes ?? []);
-  if (scenes.length === 0) throw new Error("Découpage impossible — réessaie ou reformule l'histoire.");
+  // Le LLM renvoie parfois du texte autour du JSON, ou une sortie tronquée.
+  // On tente une 2e fois avec une consigne plus stricte avant d'abandonner.
+  const attempt = async (extra: string, maxTokens: number): Promise<VlogScene[]> => {
+    const raw = await generateText(SCENES_SYSTEM, extra ? `${user}\n\n${extra}` : user, maxTokens);
+    const parsed = extractJson<{ scenes?: VlogScene[] }>(raw);
+    const scenes = normalizeScenes(parsed?.scenes ?? []);
+    if (scenes.length === 0) {
+      logger.warn("scenes_parse_failed", {
+        rawLength: raw?.length ?? 0,
+        hadJson: !!parsed,
+        sceneCount: parsed?.scenes?.length ?? 0,
+        preview: String(raw ?? "").slice(0, 400),
+      });
+    }
+    return scenes;
+  };
+
+  let scenes = await attempt("", 4000);
+  if (scenes.length === 0) {
+    scenes = await attempt(
+      `IMPORTANT : ta réponse précédente n'était pas exploitable. Réponds UNIQUEMENT avec l'objet JSON, sans texte avant ni après, sans balises de code. Garde les prompts courts (max 30 mots).`,
+      4000,
+    );
+  }
+  if (scenes.length === 0) {
+    throw new Error("Le découpage n'a pas abouti (réponse du modèle inexploitable). Réessaie, ou raccourcis l'histoire.");
+  }
   return scenes;
 }
 

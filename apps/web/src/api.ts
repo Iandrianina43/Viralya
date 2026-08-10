@@ -1,4 +1,5 @@
-export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
+// L'API est servie sous /api (le front occupe les mêmes chemins en production).
+export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api";
 const ADMIN_KEY = import.meta.env.VITE_ADMIN_API_KEY ?? "dev-admin-key";
 
 export type VideoProviderName = "heygen" | "argil" | "higgsfield" | "stub";
