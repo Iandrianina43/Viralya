@@ -1,0 +1,22 @@
+{
+  "name": "viralya",
+  "version": "0.1.0",
+  "private": true,
+  "description": "VIRALYA — plateforme d'influenceurs IA (MVP). Monorepo API (Node/Express) + Web (React) + Supabase.",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "dev:api": "pnpm --filter @viralya/api dev",
+    "dev:web": "pnpm --filter @viralya/web dev",
+    "worker": "pnpm --filter @viralya/api worker",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}
