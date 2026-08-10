@@ -12,7 +12,16 @@ const here = dirname(fileURLToPath(import.meta.url));
 export function createServer() {
   const app = express();
   app.disable("x-powered-by");
+  app.set("trust proxy", 1); // derrière Caddy : IP réelle pour le rate-limit
   app.use(cors({ origin: [config.WEB_BASE_URL], credentials: true }));
+
+  // En-têtes de sécurité de base.
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    next();
+  });
 
   registerRoutes(app);
 

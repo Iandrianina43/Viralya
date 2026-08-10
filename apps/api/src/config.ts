@@ -16,6 +16,12 @@ const EnvSchema = z.object({
 
   SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+  SUPABASE_ANON_KEY: z.string().optional(),
+
+  // Comptes utilisateurs
+  ALLOW_SIGNUP: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
+  ADMIN_EMAIL: z.string().optional(), // bootstrap : crée ce compte admin au démarrage s'il n'existe pas
+  ADMIN_PASSWORD: z.string().optional(),
   SUPABASE_STORAGE_BUCKET: z.string().default("avatar-assets").transform((v) => v.trim() || "avatar-assets"),
 
   LLM_PROVIDER: z.enum(["anthropic", "openai"]).default("anthropic"),

@@ -1,6 +1,7 @@
 // L'API est servie sous /api (le front occupe les mêmes chemins en production).
+import { authHeaders, signalUnauthorized } from "./lib/authToken";
+
 export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api";
-const ADMIN_KEY = import.meta.env.VITE_ADMIN_API_KEY ?? "dev-admin-key";
 
 export type VideoProviderName = "heygen" | "argil" | "higgsfield" | "stub";
 
@@ -93,14 +94,34 @@ export interface DraftSummary { id: string; title: string; ready: boolean; updat
 export interface DraftBody { title: string; messages: ChatMessage[]; fiche: AvatarDraft; ready: boolean }
 
 async function req<T>(path: string, init?: RequestInit & { admin?: boolean }): Promise<T> {
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  if (init?.admin) headers["x-admin-key"] = ADMIN_KEY;
+  // La session (Bearer) couvre tout, y compris les endpoints /admin.
+  const headers: Record<string, string> = { "content-type": "application/json", ...authHeaders() };
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers: { ...headers, ...init?.headers } });
-  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  if (res.status === 401 && !path.startsWith("/auth/")) signalUnauthorized();
+  if (!res.ok) {
+    let msg = await res.text();
+    try { msg = (JSON.parse(msg) as { error?: string }).error ?? msg; } catch { /* texte brut */ }
+    throw new Error(msg || `Erreur ${res.status}`);
+  }
   return (res.status === 204 ? (undefined as T) : ((await res.json()) as T));
 }
 
+// ── Comptes & session ────────────────────────────────────────
+export interface AuthUser { id: string; email: string; name: string; role: "admin" | "user" }
+export interface SessionResult { token: string; expires_at: number | null; user: AuthUser }
+export interface ManagedUser { id: string; email: string; name: string; role: "admin" | "user"; created_at: string; last_sign_in_at: string | null; banned: boolean }
+
 export const api = {
+  // Auth
+  login: (email: string, password: string) => req<SessionResult>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+  signup: (name: string, email: string, password: string) => req<SessionResult>("/auth/signup", { method: "POST", body: JSON.stringify({ name, email, password }) }),
+  me: () => req<{ user: AuthUser }>("/auth/me"),
+  updateProfile: (name: string) => req<{ ok: boolean; user: AuthUser }>("/auth/profile", { method: "PUT", body: JSON.stringify({ name }) }),
+  changePassword: (current_password: string, new_password: string) => req<{ ok: boolean }>("/auth/change-password", { method: "POST", body: JSON.stringify({ current_password, new_password }) }),
+  listUsers: () => req<{ users: ManagedUser[]; signup_open: boolean }>("/auth/admin/users"),
+  updateUser: (id: string, patch: { role?: "admin" | "user"; banned?: boolean }) => req<{ ok: boolean }>(`/auth/admin/users/${id}`, { method: "PUT", body: JSON.stringify(patch) }),
+  deleteUser: (id: string) => req<void>(`/auth/admin/users/${id}`, { method: "DELETE" }),
+
   chatAvatar: (messages: ChatMessage[], draft: AvatarDraft) =>
     req<ChatResult>("/avatars/chat", { method: "POST", body: JSON.stringify({ messages, draft }) }),
 
@@ -112,9 +133,10 @@ export const api = {
   ): Promise<{ draft: AvatarDraft; ready: boolean }> => {
     const res = await fetch(`${API_BASE}/avatars/chat/stream`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...authHeaders() },
       body: JSON.stringify({ messages, draft }),
     });
+    if (res.status === 401) signalUnauthorized();
     if (!res.ok || !res.body) throw new Error(`${res.status} ${await res.text()}`);
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -192,7 +214,7 @@ export const api = {
   ): Promise<{ title: string; story: string; caption: string; hashtags: string[] }> => {
     const res = await fetch(`${API_BASE}/admin/vlog/story`, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-admin-key": ADMIN_KEY },
+      headers: { "content-type": "application/json", ...authHeaders() },
       body: JSON.stringify({
         avatar_id: avatarId, preset: opts.preset, brief: opts.brief,
         previous_story: opts.previousStory, instruction: opts.instruction,
@@ -245,7 +267,7 @@ export const api = {
   ): Promise<void> => {
     const res = await fetch(`${API_BASE}/admin/generate-vlog`, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-admin-key": ADMIN_KEY },
+      headers: { "content-type": "application/json", ...authHeaders() },
       body: JSON.stringify({ avatar_id: avatarId, preset }),
     });
     if (!res.ok || !res.body) throw new Error(`${res.status} ${await res.text()}`);
