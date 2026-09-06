@@ -407,6 +407,8 @@ export async function submitShot(ctx: ShotContext, shot: ShotState, say?: (msg: 
         outfitDescription: ctx.outfit?.description_en ?? null,
         productDescription: product?.name ? `${product.name}${product.description ? `: ${String(product.description).slice(0, 160)}` : ""}` : null,
         cuts,
+        words: shot.words,
+        audioSeconds: shot.audio_seconds,
       });
       const duration = clampDuration(Math.ceil((shot.audio_seconds ?? shot.duration) + 1.2), taskType);
       const taskId = await submitSeedanceSegment({
@@ -463,7 +465,7 @@ export async function submitShot(ctx: ShotContext, shot: ShotState, say?: (msg: 
     outfitDescription: ctx.outfit?.description_en ?? null,
   };
   const prompt = native
-    ? buildSeedance25Prompt({ mode: "voiceover", ...promptOpts, refs: { ...promptOpts.refs, hasVoiceRef: true } })
+    ? buildSeedance25Prompt({ mode: "voiceover", ...promptOpts, refs: { ...promptOpts.refs, hasVoiceRef: true }, words: shot.words, audioSeconds: shot.audio_seconds })
     : buildBrollPrompt(promptOpts);
   const duration = native ? clampDuration(Math.max(shot.duration, Math.ceil((shot.audio_seconds ?? 0) + 1)), taskType) : shot.duration;
   const taskId = await submitSeedanceSegment({

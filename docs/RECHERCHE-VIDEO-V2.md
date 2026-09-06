@@ -157,3 +157,48 @@ fin**, la carte, l'assiette qui arrive, elle goûte. Prononciations à corriger 
 Contraintes PiAPI apprises : « Insufficient credits » (code 10002) si le clip dépasse le solde, la
 recharge automatique ne se déclenche ni sur refus ni sur petite tâche ; seul le titulaire du compte
 peut recharger.
+
+## 11. Comment prompter Seedance — recherche du 6 septembre, appliquée (prompt v2.5)
+
+Sources lues : doc PiAPI Seedance 2 (syntaxe `@image`/`@audio`, limites), deux résumés du guide
+officiel ByteDance (heyuan110.com, dexhunter/seedance2-skill), guides fal.ai, RunDiffusion,
+seedance.tv (multi-shot), Higgsfield (2.5, UGC), Tryonr (2.5), Cutout.pro et Emily2040 (audio et
+lip-sync), PiAPI blog (5 prompts 2.5). Le manuel officiel ByteDance sur Lark exige une connexion :
+non consulté directement.
+
+Ce que les guides disent de façon convergente :
+- Formule : sujet + action + environnement + caméra + style + audio. L'adhérence DÉCROÎT avec la
+  position : les 20-30 premiers mots verrouillent le sujet (identité, tenue). 60-100 mots hors dialogue.
+- Chaque `@référence` a UN rôle explicite (« @image1 fournit le visage… ignore son fond »). Une
+  référence « nue » fait fuiter son cadrage et sa lumière dans le rendu.
+- Plusieurs plans dans un rendu : « Shot 1 (0-6s) … [Cut to] Shot 2 … », une taille de plan et UN
+  mouvement de caméra par plan, répéter les jetons de tenue et de lieu. Une seule langue dans le
+  prompt : le mélange est un mode d'échec listé.
+- Dialogue : lignes COURTES (5-10 mots), phrases complètes, réparties sur les plans (les longs
+  monologues perdent la synchro « à mi-chemin ») ; préciser langue et livraison ; visage stable, pas de
+  rotation de tête pendant la ligne.
+- Audio : sons NOMMÉS, « no music » explicite (sinon le modèle ajoute une musique de pub) ; aucune
+  instruction contradictoire.
+- Éviter les adjectifs vagues (cinematic, stunning) et les paramètres de génération dans le prompt.
+- Référence audio : les guides divergent (« guide de rythme, pas de clonage » contre « le modèle
+  synchronise sur l'audio fourni »). Notre test du 4 sept. a donné une voix au timbre de `@audio1` :
+  on garde `@audio1` = la réplique entière, avec son rôle écrit noir sur blanc.
+
+Audit du dernier prompt réellement envoyé (contenu `b87d0eb0`, 4 sept.) : 559 mots ; timeline et
+action écrites en FRANÇAIS (le réalisateur a ignoré la consigne) ; « no cuts » répété trois fois ;
+« faint guitar music » dans l'ambiance puis « no music » ; description du lieu de 70 mots ; tenue
+décrite deux fois.
+
+Appliqué (`buildSeedance25Prompt`, `assignLinesToShots`, `ensureEnglishDirection`) :
+- sections étiquetées sur des lignes séparées, identité et tenue en tête, lieu ≤ 40 mots, style ≤ 18,
+  action ≤ 30, un rôle par référence ;
+- shot list horodatée sur la durée RÉELLE de la voix (mots horodatés ElevenLabs), une ligne de dialogue
+  par plan = phrases entières, « [Cut to] » entre les plans, socle « cuts only between the listed shots » ;
+- `@audio1` avec rôle explicite, ambiance purgée de toute musique, « no music » ; contraintes du
+  réalisateur dédoublonnées et purgées des consignes de coupe ou de sous-titres ;
+- champs de direction traduits en anglais par un appel LLM court quand le réalisateur a écrit en
+  français ; règles du réalisateur mises à jour (phrases de 8-14 mots, taille de plan + un mouvement
+  par plan, visage stable pendant la ligne, pas de musique dans l'ambiance).
+
+Non vérifié : aucun rendu payant n'a été relancé avec ce prompt (solde PiAPI ≈ 0-4 $). Le premier
+rendu servira de test A/B contre `b87d0eb0`.

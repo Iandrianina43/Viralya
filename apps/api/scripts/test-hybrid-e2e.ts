@@ -5,7 +5,8 @@
  */
 import { readFile } from "node:fs/promises";
 import { buildContextBrief } from "../src/context/contextBuilder";
-import { breakIntoScenes, writeStory, type VlogScene } from "../src/domain/director";
+import { breakIntoScenes, buildSeedance25Prompt, writeStory, type VlogScene } from "../src/domain/director";
+import { estimateSpeechSeconds } from "../src/providers/elevenlabs";
 import { createLocation, listLocations } from "../src/domain/locations";
 import { getMemoryBrief } from "../src/memory/memory";
 import { estimateHybridCost, readHybridSettings, type ShotState } from "../src/pipeline/hybrid";
@@ -65,6 +66,21 @@ if (process.env.DRY_RUN) {
   for (const sc of scenes) {
     log(`  lieu : ${sc.location_key ?? "-"}${sc.new_location ? ` (NOUVEAU : ${sc.new_location.name})` : ""} · caméra : ${sc.camera}`);
     for (const sh of sc.shots) log(`    plan ${sh.t.padEnd(7)} ${sh.desc}`);
+  }
+  // Aperçu du prompt Seedance 2.5 tel qu'il partira (références supposées présentes ; sans la voix,
+  // les bornes des plans sont estimées à 2,3 mots/s).
+  for (const sc of scenes) {
+    const locDesc = sc.new_location?.description ?? locations.find((l) => l.key === sc.location_key)?.description ?? null;
+    const prompt = buildSeedance25Prompt({
+      mode: sc.mode === "talk" ? "talk" : "voiceover",
+      scene: sc,
+      refs: { hasSheet: true, hasLocationImage: true, hasKeyframe: true, hasOutfitImage: false, hasVoiceRef: true },
+      locationDescription: locDesc,
+      city: avatar.city,
+      cuts: process.env.SINGLE_TAKE === "1" ? "multi" : "none",
+      audioSeconds: estimateSpeechSeconds(sc.texte),
+    });
+    log(`Prompt Seedance 2.5 « ${sc.titre} » (${prompt.split(/\s+/).length} mots) :\n${prompt}`);
   }
   process.exit(0);
 }

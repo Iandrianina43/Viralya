@@ -12,6 +12,9 @@ import { logger } from "../logger";
 // ─────────────────────────────────────────────────────────────
 
 const BASE = "https://api.piapi.ai";
+// PiAPI rejette les prompts Seedance au-delà de 4 000 caractères. On garde une
+// petite marge pour éviter un écart de comptage Unicode côté fournisseur.
+const SEEDANCE_PROMPT_MAX_CHARS = 3_950;
 
 export function piapiConfigured(): boolean {
   return !!config.PIAPI_API_KEY;
@@ -165,7 +168,17 @@ export async function piapiFetch(path: string, init?: RequestInit): Promise<any>
     headers: { "x-api-key": config.PIAPI_API_KEY ?? "", "content-type": "application/json", ...(init?.headers ?? {}) },
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(`piapi ${path} ${res.status}: ${text.slice(0, 300)}`);
+  if (!res.ok) {
+    // Les réponses d'erreur PiAPI placent souvent la vraie cause dans data.logs,
+    // après un gros objet de tâche : la simple troncature du JSON la masquait.
+    let detail = text.slice(0, 500);
+    try {
+      const body = JSON.parse(text) as { message?: string; data?: { logs?: unknown; error?: { message?: string } } };
+      const logs = Array.isArray(body.data?.logs) ? body.data.logs.map(String).filter(Boolean).join("; ") : "";
+      detail = logs || body.data?.error?.message || body.message || detail;
+    } catch { /* conserver le corps brut */ }
+    throw new Error(`piapi ${path} ${res.status}: ${detail}`);
+  }
   const body = JSON.parse(text) as { code?: number; data?: any; message?: string };
   // PiAPI renvoie 200 HTTP même sur erreur applicative → le vrai statut est dans `code`.
   if (body.code !== 200) throw new Error(`piapi ${path}: ${body.message ?? `code ${body.code}`}`);
@@ -183,6 +196,23 @@ export interface SeedanceSegmentInput {
   aspectRatio?: string; // défaut 9:16 (réseaux)
 }
 
+/**
+ * Raccourcit uniquement la description visuelle centrale. Le début (identité,
+ * produit, action) et surtout la fin (dialogue exact et contraintes) sont conservés.
+ */
+export function fitSeedancePrompt(prompt: string): string {
+  if (prompt.length <= SEEDANCE_PROMPT_MAX_CHARS) return prompt;
+  const audioAt = prompt.lastIndexOf(" Audio:");
+  if (audioAt < 0) return prompt.slice(0, SEEDANCE_PROMPT_MAX_CHARS);
+  const suffix = prompt.slice(audioAt + 1);
+  const headBudget = SEEDANCE_PROMPT_MAX_CHARS - suffix.length - 34;
+  if (headBudget <= 200) return prompt.slice(0, SEEDANCE_PROMPT_MAX_CHARS);
+  const rawHead = prompt.slice(0, headBudget);
+  const sentenceEnd = Math.max(rawHead.lastIndexOf(". "), rawHead.lastIndexOf("; "));
+  const head = sentenceEnd > headBudget * 0.7 ? rawHead.slice(0, sentenceEnd + 1) : rawHead;
+  return `${head} [Visual details shortened.] ${suffix}`.slice(0, SEEDANCE_PROMPT_MAX_CHARS);
+}
+
 /** Soumet un segment Seedance 2.0 (mode omni_reference). Renvoie le task_id PiAPI. */
 export async function submitSeedanceSegment(input: SeedanceSegmentInput): Promise<string> {
   const images = (input.imageUrls ?? []).filter(Boolean);
@@ -197,7 +227,7 @@ export async function submitSeedanceSegment(input: SeedanceSegmentInput): Promis
       model: "seedance",
       task_type: input.taskType,
       input: {
-        prompt: input.prompt,
+        prompt: fitSeedancePrompt(input.prompt),
         mode: "omni_reference",
         ...(images.length ? { image_urls: images } : {}),
         ...(videos.length ? { video_urls: videos } : {}),

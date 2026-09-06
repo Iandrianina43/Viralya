@@ -237,6 +237,9 @@ export function buildSeedance25Prompt(opts: {
    * entre rendus séparés. "none" : plan continu sans coupe (plans courts du format monté).
    */
   cuts?: "multi" | "none";
+  /** Horodatage ElevenLabs disponible pour de futurs découpages sur les mots. */
+  words?: Array<{ w: string; s: number; e: number }> | null;
+  audioSeconds?: number | null;
 }): string {
   const { scene, refs } = opts;
   const multi = opts.cuts === "multi";
