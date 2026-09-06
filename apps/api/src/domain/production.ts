@@ -27,6 +27,8 @@ export interface LaunchOptions {
   ratioClass?: "value" | "proof" | "sale";
   /** Prise unique (une scène de 20-30 s, coupes internes entre angles) — défaut du produit. */
   singleTake?: boolean;
+  /** Inserts photo pendant la parole (« B-roll ») — désactivés par défaut depuis le 6 sept. 2026. */
+  inserts?: boolean;
   locationScopes?: Record<string, LocationScope>;
   /** Champs supplémentaires du payload (kind: "ugc", plan_entry_id, product_image_url…). */
   extraPayload?: Record<string, unknown>;
@@ -84,7 +86,7 @@ export async function launchProduction(avatarId: string, production: VlogProduct
 
   const estimate =
     format === "hybrid"
-      ? estimateHybridCost(production.scenes, readHybridSettings({ talk_provider: talkProvider, talk_mode: talkMode, video_model: taskType, resolution }), { music })
+      ? estimateHybridCost(production.scenes, readHybridSettings({ talk_provider: talkProvider, talk_mode: talkMode, video_model: taskType, resolution }), { music, kind: String(opts.extraPayload?.kind ?? ""), inserts: opts.inserts === true })
       : estimateProductionCost(taskType, resolution, production.scenes.map((s) => clampDuration(Number(s.duration_sec) || 12, taskType)));
 
   const title = production.title ?? "Vlog";
@@ -101,7 +103,7 @@ export async function launchProduction(avatarId: string, production: VlogProduct
         theme: title,
         production,
         format, video_model: taskType, resolution,
-        ...(format === "hybrid" ? { talk_provider: talkProvider, talk_mode: talkMode, tts_model: ttsModel, subtitles, music, single_take: opts.singleTake !== false, cuts: opts.singleTake !== false ? "multi" : "none" } : {}),
+        ...(format === "hybrid" ? { talk_provider: talkProvider, talk_mode: talkMode, tts_model: ttsModel, subtitles, music, single_take: opts.singleTake !== false, cuts: opts.singleTake !== false ? "multi" : "none", inserts: opts.inserts === true } : {}),
         caption: production.caption ?? "",
         hashtags: production.hashtags ?? [],
         script: production.scenes.map((s) => s.texte).join(" "),

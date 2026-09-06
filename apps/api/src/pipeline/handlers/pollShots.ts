@@ -167,7 +167,7 @@ export async function pollShotsJob(job: JobRow): Promise<void> {
 
 async function finalize(job: JobRow, item: ContentItemRow, shots: ShotState[], log: Array<{ t: string; msg: string }>, say: (msg: string) => void): Promise<void> {
   const id = item.id;
-  const done = shots.filter((s) => s.phase === "done" && s.clip_url).sort((a, b) => a.idx - b.idx);
+  const done = shots.filter((s) => s.phase === "done" && (s.clip_url || (s.role === "still" && s.image_url))).sort((a, b) => a.idx - b.idx);
   if (!done.length) {
     await mergeAssets(id, { shots, log });
     throw new Error("hybride : aucun plan abouti");
@@ -176,19 +176,22 @@ async function finalize(job: JobRow, item: ContentItemRow, shots: ShotState[], l
   if (fresh?.status === "failed" || fresh?.status === "canceled") return;
 
   const musicUrl = typeof item.assets.music_url === "string" ? item.assets.music_url : null;
-  say(`🎞️ Montage de ${done.length} plan(s) : inserts, voix off, sous-titres karaoké${musicUrl ? ", musique" : ""}…`);
+  // Inserts photo (« B-roll ») désactivés par défaut depuis le 6 sept. : payload.inserts === true pour les remettre.
+  const insertsOn = item.payload.inserts === true;
+  say(`🎞️ Montage de ${done.length} plan(s) : ${insertsOn ? "inserts, " : ""}voix off, sous-titres karaoké${musicUrl ? ", musique" : ""}…`);
   await mergeAssets(id, { shots, log, assembling: true });
 
   const parts: HybridPart[] = done.map((s) => ({
     role: s.role,
-    clipUrl: String(s.clip_url),
-    voiceUrl: s.role === "broll" && !s.native_voice ? s.audio_url ?? null : null,
+    clipUrl: String(s.clip_url ?? ""),
+    imageUrl: s.role === "still" ? s.image_url ?? null : null,
+    voiceUrl: (s.role === "broll" && !s.native_voice) || s.role === "still" ? s.audio_url ?? null : null,
     voiceSeconds: s.audio_seconds ?? null,
     words: s.words ?? null,
     // Inserts photo placés sur les mots de la voix (jamais avant 2 s, 1,5-3 s, espacés).
     // Voix native (Seedance 2.5) : le clip dure `duration`, plus long que l'audio ElevenLabs
     // (bug du 4 sept. : 3 inserts sur 4 écartés « trop tard dans le plan » à cause de audio_seconds).
-    inserts: s.role === "talk" && s.inserts?.length && s.words?.length
+    inserts: insertsOn && s.role === "talk" && s.inserts?.length && s.words?.length
       ? planInserts(s.words, s.inserts, s.native_voice ? s.duration : s.audio_seconds ?? s.duration)
       : null,
   }));

@@ -47,10 +47,10 @@ export async function generateShotsJob(job: JobRow): Promise<void> {
   let i = 0;
   for (const shot of targets) {
     i++;
-    await jobLog(job, `Plan ${shot.idx + 1} : ${shot.role === "talk" ? "avatar parlant" : "b-roll"} — soumission`, Math.round((i / Math.max(1, targets.length)) * 90));
+    await jobLog(job, `Plan ${shot.idx + 1} : ${shot.role === "talk" ? "avatar parlant" : shot.role === "still" ? "image" : "plan Seedance"} — soumission`, Math.round((i / Math.max(1, targets.length)) * 90));
     try {
       await submitShot(ctx, shot, say);
-      say(`🎥 ${shot.titre} : ${shot.role === "talk" ? `avatar parlant (${shot.provider})` : "b-roll Seedance"} en cours — ≈ ${(shot.cost_usd ?? 0).toFixed(2)} $`);
+      if (shot.role !== "still") say(`🎥 ${shot.titre} : ${shot.role === "talk" ? `avatar parlant (${shot.provider})` : "plan Seedance"} en cours — ≈ ${(shot.cost_usd ?? 0).toFixed(2)} $`);
     } catch (err) {
       const msg = String((err as Error)?.message ?? err);
       if (isRateLimited(err)) {

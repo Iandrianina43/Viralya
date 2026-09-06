@@ -1,8 +1,8 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { config } from "../config";
 import { buildContextBrief } from "../context/contextBuilder";
 import { breakIntoScenes, directVlog, writeStory, VLOG_PRESETS, type VlogProduction, type VlogScene } from "../domain/director";
-import { launchProduction } from "../domain/production";
+import { launchProduction, type LaunchOptions } from "../domain/production";
 import { asyncHandler } from "../lib/asyncHandler";
 import { badRequest, notFound } from "../lib/httpError";
 import { orgAvatarIds, requireAvatar } from "../lib/scope";
@@ -139,7 +139,7 @@ studioRouter.post(
       talkProvider: req.body?.talk_provider, talkMode: req.body?.talk_mode, ttsModel: req.body?.tts_model,
       subtitles: req.body?.subtitles === true, music: req.body?.music !== false,
       // Prise unique par défaut ; le format monté (plans courts) est demandé explicitement.
-      singleTake: req.body?.single_take !== false,
+      singleTake: req.body?.single_take !== false, inserts: req.body?.inserts === true,
       locationScopes: (req.body?.location_scopes ?? {}) as Record<string, "permanent" | "oneoff">,
     });
     res.status(202).json({ ok: true, job_id: r.jobId, content_item_id: r.itemId, estimated_cost_usd: r.estimate, format: r.format });
@@ -607,5 +607,172 @@ studioRouter.post(
     if (!job.avatar_id || !ids.includes(String(job.avatar_id))) throw notFound("Tâche");
     await retryJob(String(job.id));
     res.json({ ok: true });
+  }),
+);
+
+// ─────────────────────────────────────────────────────────────
+// FORMATS (6 sept. 2026, docs/RECHERCHE-FORMATS.md) : pub produit sans visage, pub avec elle,
+// vidéo explicative sans visage, clone de vidéo. Le script est relu dans l'assistant avant le
+// lancement (formats/produce), comme le vlog.
+// ─────────────────────────────────────────────────────────────
+
+studioRouter.post(
+  "/formats/script",
+  asyncHandler(async (req, res) => {
+    const avatarId = String(req.body?.avatar_id ?? "");
+    const kind = String(req.body?.kind ?? "");
+    if (!avatarId) throw badRequest("avatar_id requis");
+    const avatar = await requireAvatar<AvatarCore>(req.org!.id, avatarId, AVATAR_CORE);
+    const durationSec = Math.max(10, Math.min(30, Number(req.body?.duration_sec) || 30));
+    const brief = String(req.body?.brief ?? "").trim();
+    const instruction = typeof req.body?.instruction === "string" ? req.body.instruction.trim() : "";
+    const { writeExplainer, writeProductAd, adCreatorBrief, parseProduct } = await import("../domain/formats");
+
+    if (kind === "explainer") {
+      if (brief.length < 5) throw badRequest("Décris le sujet de la vidéo (5 caractères minimum).");
+      res.json({ production: await writeExplainer({ avatar, topic: brief, durationSec, instruction }) });
+      return;
+    }
+    if (kind === "ad_product" || kind === "ad_creator") {
+      let product;
+      try { product = parseProduct(req.body?.product); } catch (err) { throw badRequest(String((err as Error).message)); }
+      if (kind === "ad_product") {
+        res.json({ production: await writeProductAd({ avatar, product, brief, durationSec, voiceOver: req.body?.voice_over !== false, instruction }) });
+        return;
+      }
+      // Pub avec elle : la prise unique existante (histoire + découpage) avec un brief publicitaire.
+      const { listLocations } = await import("../domain/locations");
+      const [contextBrief, memoryBrief, locations] = await Promise.all([
+        buildContextBrief({ city: avatar.city ?? "", niche: avatar.niche ?? "", timezone: avatar.timezone ?? "Europe/Paris" }),
+        getMemoryBrief(avatarId),
+        listLocations(avatarId, "all").catch(() => []),
+      ]);
+      const base = {
+        name: avatar.name, niche: avatar.niche, city: avatar.city, system_prompt: avatar.system_prompt, contextBrief, memoryBrief,
+        locations: locations.map((l) => ({ key: l.key, name: l.name, description: l.description })),
+      };
+      const story = await writeStory({ ...base, brief: adCreatorBrief(product, brief), instruction: instruction || undefined }, () => {});
+      const scenes = await breakIntoScenes({ ...base, story: story.story, durationSec, format: "hybrid", singleTake: true });
+      res.json({ production: { ...story, scenes } });
+      return;
+    }
+    throw badRequest("kind inconnu (explainer, ad_product, ad_creator)");
+  }),
+);
+
+studioRouter.post(
+  "/formats/produce",
+  asyncHandler(async (req, res) => {
+    const avatarId = String(req.body?.avatar_id ?? "");
+    const kind = String(req.body?.kind ?? "");
+    const production = req.body?.production as VlogProduction | undefined;
+    if (!avatarId || !production?.scenes?.length) throw badRequest("avatar_id et production requis");
+    await requireAvatar(req.org!.id, avatarId, "id");
+    const { parseProduct, isFormatKind } = await import("../domain/formats");
+    if (!isFormatKind(kind) || kind === "vlog") throw badRequest("kind inconnu (ad_product, ad_creator, explainer, clone)");
+
+    const extra: Record<string, unknown> = { kind };
+    const opts: LaunchOptions = {
+      resolution: typeof req.body?.resolution === "string" ? req.body.resolution : "720p",
+      talkMode: typeof req.body?.talk_mode === "string" ? req.body.talk_mode : undefined,
+      subtitles: req.body?.subtitles === true,
+      music: req.body?.music !== false,
+      singleTake: true,
+      inserts: req.body?.inserts === true,
+      extraPayload: extra,
+    };
+    if (kind === "ad_product" || kind === "ad_creator") {
+      let product;
+      try { product = parseProduct(req.body?.product); } catch (err) { throw badRequest(String((err as Error).message)); }
+      extra.product = product;
+      extra.product_image_url = product.image_url ?? null;
+      extra.product_image_urls = product.image_urls ?? [];
+      if (kind === "ad_product") extra.faceless = true;
+      opts.ratioClass = "sale";
+    } else if (kind === "explainer") {
+      extra.faceless = true;
+    } else if (kind === "clone") {
+      const src = String(req.body?.source_video_url ?? "");
+      if (!/^https?:\/\//.test(src)) throw badRequest("source_video_url requis (dépose d'abord la vidéo)");
+      extra.source_video_url = src;
+      extra.source_seconds = Number(req.body?.source_seconds) || null;
+      opts.music = false; // la source impose son rythme ; la musique se mixe au montage si on la réactive
+    }
+    const r = await launchProduction(avatarId, production, opts);
+    res.status(202).json({ ok: true, job_id: r.jobId, content_item_id: r.itemId, estimated_cost_usd: r.estimate });
+  }),
+);
+
+// Estimation d'un format avant lancement (même calcul que le lancement).
+studioRouter.post(
+  "/formats/estimate",
+  asyncHandler(async (req, res) => {
+    const production = req.body?.production as VlogProduction | undefined;
+    if (!production?.scenes?.length) throw badRequest("production requise");
+    const kind = String(req.body?.kind ?? "");
+    const settings = readHybridSettings({ talk_mode: req.body?.talk_mode, resolution: req.body?.resolution ?? "720p" });
+    const e = estimateHybridCost(production.scenes, settings, { music: req.body?.music !== false && kind !== "clone", kind, inserts: req.body?.inserts === true });
+    res.json({ total_usd: e.total, per_shot_usd: e.shots });
+  }),
+);
+
+// ── CLONE : dépôt de la vidéo source (corps brut ≤ 200 Mo), lien, transcription ──
+studioRouter.post(
+  "/clone/upload",
+  express.raw({ type: ["video/*", "application/octet-stream"], limit: "200mb" }),
+  asyncHandler(async (req, res) => {
+    const avatarId = String(req.query.avatar_id ?? "");
+    if (!avatarId) throw badRequest("avatar_id requis");
+    await requireAvatar(req.org!.id, avatarId, "id");
+    const bytes = req.body as unknown;
+    if (!Buffer.isBuffer(bytes) || bytes.length < 10_000) throw badRequest("Fichier vidéo vide ou illisible (envoie le fichier en corps de requête, content-type video/mp4).");
+    const { storeCloneSource } = await import("../domain/formats");
+    res.json(await storeCloneSource(avatarId, bytes, String(req.headers["content-type"] ?? "video/mp4")));
+  }),
+);
+
+studioRouter.post(
+  "/clone/link",
+  asyncHandler(async (req, res) => {
+    const avatarId = String(req.body?.avatar_id ?? "");
+    const url = String(req.body?.url ?? "").trim();
+    if (!avatarId || !url) throw badRequest("avatar_id et url requis");
+    await requireAvatar(req.org!.id, avatarId, "id");
+    const { downloadCloneLink } = await import("../domain/formats");
+    try {
+      res.json(await downloadCloneLink(avatarId, url));
+    } catch (err) {
+      throw badRequest(String((err as Error).message));
+    }
+  }),
+);
+
+studioRouter.post(
+  "/clone/transcribe",
+  asyncHandler(async (req, res) => {
+    const avatarId = String(req.body?.avatar_id ?? "");
+    const url = String(req.body?.source_url ?? "");
+    if (!avatarId || !/^https?:\/\//.test(url)) throw badRequest("avatar_id et source_url requis");
+    await requireAvatar(req.org!.id, avatarId, "id");
+    const { transcribeCloneSource } = await import("../domain/formats");
+    res.json(await transcribeCloneSource(url, typeof req.body?.language === "string" ? req.body.language : undefined));
+  }),
+);
+
+// Photo de produit (corps brut ≤ 15 Mo) → URL publique réutilisable comme référence.
+studioRouter.post(
+  "/upload-image",
+  express.raw({ type: ["image/*", "application/octet-stream"], limit: "15mb" }),
+  asyncHandler(async (req, res) => {
+    const avatarId = String(req.query.avatar_id ?? "");
+    if (!avatarId) throw badRequest("avatar_id requis");
+    await requireAvatar(req.org!.id, avatarId, "id");
+    const bytes = req.body as unknown;
+    if (!Buffer.isBuffer(bytes) || bytes.length < 1_000) throw badRequest("Image vide ou illisible.");
+    const type = String(req.headers["content-type"] ?? "image/jpeg");
+    const ext = /png/i.test(type) ? "png" : /webp/i.test(type) ? "webp" : "jpg";
+    const { uploadBytes } = await import("../lib/storage");
+    const url = await uploadBytes(`${avatarId}/products/${Date.now()}.${ext}`, bytes, type);
+    res.json({ url });
   }),
 );

@@ -86,7 +86,7 @@ son organisation personnelle ; un propriétaire peut ajouter des membres par ema
 | `/api/avatars` | session + organisation | influenceurs, portrait, planche, voix, univers de lieux (`?scope=permanent|oneoff|all`), mémoire, Character Bible (`references`, `wardrobe`, `keyframes` : cache décor + tenue + cadrage, réutilisé à 0 $) |
 | `/api/avatar-drafts` | session + organisation | brouillons de création (chat IA) |
 | `/api/content` | session + organisation | contenus, revue (approuver, refuser, relancer, annuler), versions |
-| `/api/studio` | session + organisation | réalisateur IA, production Seedance, estimation des coûts, solde et historique PiAPI, Task Center |
+| `/api/studio` | session + organisation | réalisateur IA, production Seedance, estimation des coûts, solde et historique PiAPI, Task Center ; formats (`/formats/script`, `/formats/estimate`, `/formats/produce`), clone (`/clone/upload`, `/clone/link`, `/clone/transcribe`), `/upload-image` |
 | `/api/calendar` | session + organisation | calendrier éditorial mensuel : génération par le stratège (job `generate_plan`), entrées éditables, production d'une entrée (vidéo en prise unique, photo, carrousel, story) |
 | `/api/social` | session + organisation | compte social par influenceur et par réseau (profil, feed, statistiques simulées ou réelles), « publier maintenant », connexions Ayrshare, remontée des stats |
 | `/api/ugc` | session + organisation | campagnes UGC : produit + matrice (influenceurs × angles × accroches × durées × CTA) → scripts en 7 temps, production vidéo par variante avec mentions légales incrustées |
@@ -145,6 +145,28 @@ meurt est remis en file automatiquement (`reap_stale_jobs`). L'annulation est co
 - **Publication réelle** (phase 4, socle) : `providers/publisher.ts` (simulé / Ayrshare), `social_connections`,
   labels IA envoyés, job `sync_stats` (+1 h, +6 h, +24 h, +72 h, +7 j). Recherche : docs/RECHERCHE-PUBLICATION.md.
 - Smoke test après migration 0016 : `pnpm --filter @viralya/api exec tsx scripts/test-phase3.ts <avatar_id> [content_id]`.
+
+## Formats vidéo et prompts Seedance (6-7 sept. 2026)
+
+Le Studio (« Assistant de réalisation ») commence par le choix du format — recherche dans
+docs/RECHERCHE-FORMATS.md, règles de prompt dans docs/RECHERCHE-VIDEO-V2.md §11 :
+
+- **Vlog** : prise unique Seedance 2.5 (3-5 plans dans un seul rendu, une phrase par plan, coupes calées
+  sur la voix ElevenLabs). **B-roll** (inserts photo, plans de coupe) désactivé par défaut, case pour le
+  réactiver (`payload.inserts`).
+- **Pub produit** (sans visage) : une prise de 30 s en 4 plans (accroche, preuve, résultat, image finale
+  propre), produit verrouillé par ses photos (`product_image_url[s]`), voix off optionnelle avec sa voix.
+- **Pub avec l'influenceur** : la prise unique avec un brief publicitaire et le produit en référence.
+- **Explicative** (sans visage) : 4-6 scènes de voix off, au plus 2 clips Seedance 2.5 (première image
+  générée, voix native) et des images Seedream animées au montage (rôle de plan `still`).
+- **Clone de vidéo** : vidéo source déposée (≤ 200 Mo, coupée à 30 s) ou téléchargée par lien (yt-dlp
+  requis sur le serveur), transcrite (Scribe), redite avec sa voix ; Seedance 2.5 reçoit `@video1` (source),
+  `@image1` (identité) et `@audio1` (sa voix). Musique désactivée.
+- Les prompts suivent le sexe de l'influenceur (`sex_age`) et sont en une seule langue (traduction de
+  secours des champs de direction écrits en français).
+- Tests à sec (LLM seulement) : `scripts/test-formats.ts <avatar_id> [explainer|ad_product|clone|all]`,
+  `SINGLE_TAKE=1 DRY_RUN=1 scripts/test-hybrid-e2e.ts <avatar_id> 30 "<brief>"` ; remontage sans inserts
+  d'une vidéo existante : `scripts/reassemble.ts <content_id> --no-inserts`.
 
 ## Feuille de route
 

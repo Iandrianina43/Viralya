@@ -1,6 +1,6 @@
-import { avatarImageModel, IDENTITY_SELECT, resolveOutfit, type AvatarIdentity, type ResolvedOutfit } from "../domain/characterBible";
+import { avatarImageModel, IDENTITY_SELECT, pronouns, resolveOutfit, type AvatarIdentity, type ResolvedOutfit } from "../domain/characterBible";
 import { piapiImageToStorage } from "../providers/piapiImage";
-import { buildBrollPrompt, buildSeedance25Prompt, foldText, type InsertFraming, type VlogScene } from "../domain/director";
+import { buildBrollPrompt, buildClonePrompt, buildFacelessPrompt, buildSeedance25Prompt, foldText, personWords, type InsertFraming, type VlogScene } from "../domain/director";
 import { ensureKeyframe, findKeyframe, type AvatarKeyframe, type KeyframeFraming } from "../domain/keyframes";
 import { qcVerdict } from "../lib/qc";
 import { logger } from "../logger";
@@ -38,7 +38,8 @@ import type { ContentItemRow } from "./pipelines";
 // État persistant : content_items.assets.shots (versionné avec le contenu).
 // ─────────────────────────────────────────────────────────────
 
-export type ShotRole = "talk" | "broll";
+/** still = image fixe animée au montage (explicative sans visage), sans rendu vidéo. */
+export type ShotRole = "talk" | "broll" | "still";
 export type ShotPhase = "waiting" | "voice" | "video" | "done" | "failed";
 export interface ShotWord { w: string; s: number; e: number }
 
@@ -88,6 +89,8 @@ export interface ShotState {
   dialogue_score?: number | null;
   task_id?: string;
   clip_url?: string;
+  /** Plan « still » : l'image (animée au montage) ; clip sans visage : sa première image. */
+  image_url?: string | null;
   prompt?: string;
   keyframe_url?: string | null;
   keyframe_id?: string | null;
@@ -186,7 +189,7 @@ export function framingFromCamera(camera: string): KeyframeFraming {
 export function shotsFromScenes(scenes: VlogScene[]): ShotState[] {
   return scenes.map((sc, idx) => ({
     idx,
-    role: sc.mode === "talk" ? "talk" : "broll",
+    role: sc.mode === "talk" ? "talk" : sc.visual === "still" ? "still" : "broll",
     titre: sc.titre,
     texte: String(sc.texte ?? "").trim(),
     phase: String(sc.texte ?? "").trim() ? "voice" : "waiting",
@@ -198,19 +201,24 @@ export function shotsFromScenes(scenes: VlogScene[]): ShotState[] {
 }
 
 /** Estimation avant lancement : avatar parlant × durée parlée, Seedance × durée, voix ≈ 0,0025 $/s, inserts ≈ 0,07 $, musique ≈ 0,06 $. */
-export function estimateHybridCost(scenes: VlogScene[], settings: HybridSettings, opts: { music?: boolean } = {}): { total: number; shots: number[] } {
+export function estimateHybridCost(scenes: VlogScene[], settings: HybridSettings, opts: { music?: boolean; kind?: string; inserts?: boolean } = {}): { total: number; shots: number[] } {
   const shots = scenes.map((sc) => {
     const speech = String(sc.texte ?? "").trim() ? estimateSpeechSeconds(sc.texte) : 0;
     const voice = speech * 0.0025;
     if (sc.mode === "talk") {
-      const inserts = (sc.inserts?.length ?? 0) * INSERT_COST_ESTIMATE;
+      const inserts = opts.inserts ? (sc.inserts?.length ?? 0) * INSERT_COST_ESTIMATE : 0;
+      const dur = opts.kind === "clone" ? Math.max(sc.duration_sec, Math.ceil(speech + 0.5)) : Math.ceil(speech + 1.2);
       const talk = settings.talkProvider === "seedance-2.5"
-        ? seedanceCost(TALK_25_TASK, talkResolution(settings.talkMode, settings.seedance.resolution), clampDuration(Math.ceil(speech + 1.2), TALK_25_TASK))
+        ? seedanceCost(TALK_25_TASK, talkResolution(settings.talkMode, settings.seedance.resolution), clampDuration(dur, TALK_25_TASK))
         : estimateTalkCost(settings.talkProvider, settings.talkMode, speech + 0.5);
-      return Math.round((talk + voice + inserts) * 1000) / 1000;
+      // Clone : la vidéo d'entrée est facturée à moitié du tarif (page PiAPI Seedance 2.5).
+      return Math.round((talk * (opts.kind === "clone" ? 1.5 : 1) + voice + inserts) * 1000) / 1000;
     }
+    // Image fixe animée (explicative) : une image Seedream, pas de rendu vidéo.
+    if (sc.visual === "still") return Math.round((INSERT_COST_ESTIMATE + voice) * 1000) / 1000;
     const dur = clampDuration(Math.max(sc.duration_sec, Math.ceil(speech + 0.5)), settings.seedance.taskType);
-    return Math.round((estimateProductionCost(settings.seedance.taskType, settings.seedance.resolution, [dur]).total + voice) * 1000) / 1000;
+    const frame = sc.visual === "clip" && opts.kind === "explainer" ? INSERT_COST_ESTIMATE : 0;
+    return Math.round((estimateProductionCost(settings.seedance.taskType, settings.seedance.resolution, [dur]).total + voice + frame) * 1000) / 1000;
   });
   const music = opts.music === false ? 0 : MUSIC_COST_ESTIMATE;
   return { total: Math.round((shots.reduce((a, b) => a + b, 0) + music) * 100) / 100, shots };
@@ -311,8 +319,22 @@ function talkPrompt(avatar: AvatarIdentity, scene: VlogScene | undefined): strin
  */
 const INSERT_ROTATION: InsertFraming[] = ["close", "full", "selfie", "location"];
 const SELF_FRAMINGS: InsertFraming[] = ["close", "full", "selfie"];
+/** Image d'une scène sans visage (explicative : still ou première image d'un clip) — Seedream, 9:16, ≈ 0,07 $. */
+async function facelessImage(ctx: ShotContext, shot: ShotState, scene: VlogScene | undefined): Promise<{ imageUrl: string; cost: number }> {
+  const subject = String(scene?.image_prompt || scene?.scene_desc || scene?.action || shot.titre).trim();
+  const prompt = [
+    `Realistic vertical 9:16 photo: ${subject}.`,
+    scene?.lighting ? `Light: ${scene.lighting}.` : "",
+    "Real textures, natural colors, slightly off-center framing, mild sensor grain. No recognizable person's face, no text, no watermark, no logo.",
+  ].filter(Boolean).join(" ");
+  const r = await piapiImageToStorage({ prompt, model: avatarImageModel(ctx.avatar), aspect: "9:16", quality: "1K" }, `${ctx.avatar.id}/${ctx.item.id}/still-${shot.idx}-${Date.now()}`);
+  return { imageUrl: r.imageUrl, cost: r.cost };
+}
+
 async function resolveInserts(ctx: ShotContext, shot: ShotState, loc: LocationRow | undefined, say?: (msg: string) => void): Promise<void> {
-  if (!shot.inserts?.length) return;
+  // Inserts photo désactivés par défaut (demande du 6 sept. : « désactive le B-roll ») : aucune image
+  // générée ni facturée tant que payload.inserts !== true.
+  if (!shot.inserts?.length || ctx.item.payload.inserts !== true) return;
   const allShots = Array.isArray(ctx.item.assets.shots) ? (ctx.item.assets.shots as ShotState[]) : [];
   const used = new Set<string>();
   for (const s of allShots) if (s.idx !== shot.idx) for (const i of s.inserts ?? []) if (i.url && i.framing !== "illustration") used.add(`${s.location_key ?? ""}:${i.framing}`);
@@ -370,8 +392,58 @@ export async function submitShot(ctx: ShotContext, shot: ShotState, say?: (msg: 
   const loc = scene?.location_key ? ctx.locations.get(scene.location_key) : undefined;
   const { talkProvider, talkMode, seedance } = ctx.settings;
 
+  const person = personWords(pronouns(ctx.avatar));
+
+  // IMAGE FIXE (explicative sans visage) : une image Seedream ≈ 0,07 $, animée au montage sous la voix ElevenLabs.
+  if (shot.role === "still") {
+    const r = await facelessImage(ctx, shot, scene);
+    shot.image_url = r.imageUrl;
+    shot.provider = undefined;
+    shot.native_voice = false;
+    shot.task_id = undefined;
+    shot.phase = "done";
+    shot.error = undefined;
+    shot.cost_usd = Math.round(r.cost * 1000) / 1000;
+    say?.(`🖼️ ${shot.titre} : image générée (${r.cost.toFixed(3)} $) — animée au montage`);
+    return;
+  }
+
   if (shot.role === "talk") {
     if (!shot.audio_url) throw new Error("réplique sans audio (generate_voice n'a pas abouti)");
+
+    // CLONE DE VIDÉO : @video1 = la source, elle remplace la personne, @audio1 = sa voix sur le texte transcrit.
+    const sourceVideo = typeof ctx.item.payload.source_video_url === "string" ? ctx.item.payload.source_video_url : null;
+    if (sourceVideo) {
+      const taskType = TALK_25_TASK;
+      const resolution = talkResolution(talkMode, seedance.resolution);
+      const outfitUrl = ctx.outfit?.ref_url ?? null;
+      const prompt = buildClonePrompt({
+        refs: { hasSheet: ctx.refs.hasSheet, hasOutfitImage: !!outfitUrl, hasVoiceRef: true },
+        texte: shot.texte,
+        outfitDescription: ctx.outfit?.description_en ?? null,
+        person,
+      });
+      const duration = clampDuration(Math.ceil(Math.max(shot.duration, (shot.audio_seconds ?? 0) + 0.5)), taskType);
+      const taskId = await submitSeedanceSegment({
+        prompt,
+        imageUrls: [...ctx.refs.imageUrls, ...(outfitUrl ? [outfitUrl] : [])],
+        videoUrls: [sourceVideo],
+        audioUrls: [shot.audio_url],
+        duration,
+        resolution,
+        taskType,
+      });
+      shot.provider = "seedance-2.5";
+      shot.native_voice = true;
+      shot.prompt = prompt;
+      shot.task_id = taskId;
+      shot.phase = "video";
+      shot.duration = duration;
+      shot.error = undefined;
+      shot.cost_usd = Math.round(seedanceCost(taskType, resolution, duration) * 1.5 * 1000) / 1000;
+      return;
+    }
+
     let imageUrl = String(ctx.avatar.ref_image_url);
     if (loc) {
       const framing = framingFromCamera(scene?.camera ?? "");
@@ -409,6 +481,7 @@ export async function submitShot(ctx: ShotContext, shot: ShotState, say?: (msg: 
         cuts,
         words: shot.words,
         audioSeconds: shot.audio_seconds,
+        person,
       });
       const duration = clampDuration(Math.ceil((shot.audio_seconds ?? shot.duration) + 1.2), taskType);
       const taskId = await submitSeedanceSegment({
@@ -442,6 +515,60 @@ export async function submitShot(ctx: ShotContext, shot: ShotState, say?: (msg: 
     return;
   }
 
+  // SANS VISAGE (pub produit, clip d'explicative) : aucune référence de l'avatar ; le produit ou une
+  // première image générée sert de référence, la voix off est native (Seedance 2.5, @audio1).
+  if (ctx.item.payload.faceless === true) {
+    const kind: "ad" | "explainer" = String(ctx.item.payload.kind ?? "").startsWith("ad") ? "ad" : "explainer";
+    const taskType: SeedanceTaskType = "seedance-2.5";
+    const sc = scene ?? fallbackScene(shot);
+    const productUrls = kind === "ad"
+      ? [
+          ...(typeof ctx.item.payload.product_image_url === "string" ? [ctx.item.payload.product_image_url] : []),
+          ...(Array.isArray(ctx.item.payload.product_image_urls) ? (ctx.item.payload.product_image_urls as unknown[]).filter((u): u is string => typeof u === "string") : []),
+        ].filter((u, i, arr) => arr.indexOf(u) === i).slice(0, 3)
+      : [];
+    let frameCost = 0;
+    let imageUrls = productUrls;
+    if (kind === "explainer" || !imageUrls.length) {
+      // Première image du clip (cache : shot.image_url) — Seedance exige au moins une référence.
+      if (!shot.image_url) {
+        const r = await facelessImage(ctx, shot, sc);
+        shot.image_url = r.imageUrl;
+        frameCost = r.cost;
+        say?.(`🖼️ ${shot.titre} : première image générée (${r.cost.toFixed(3)} $)`);
+      }
+      imageUrls = [shot.image_url];
+    }
+    const product = ctx.item.payload.product as { name?: string; description?: string } | undefined;
+    const prompt = buildFacelessPrompt({
+      kind,
+      scene: sc,
+      productImages: kind === "ad" ? productUrls.length : 0,
+      hasFrame: kind !== "ad" || !productUrls.length,
+      hasVoiceRef: !!shot.texte.trim() && !!shot.audio_url,
+      productDescription: product?.name ? `${product.name}${product.description ? `: ${String(product.description).slice(0, 160)}` : ""}` : null,
+      person,
+    });
+    const duration = clampDuration(Math.max(shot.duration, Math.ceil((shot.audio_seconds ?? 0) + 1)), taskType);
+    const taskId = await submitSeedanceSegment({
+      prompt,
+      imageUrls,
+      ...(shot.texte.trim() && shot.audio_url ? { audioUrls: [String(shot.audio_url)] } : {}),
+      duration,
+      resolution: seedance.resolution,
+      taskType,
+    });
+    shot.provider = "seedance";
+    shot.native_voice = !!shot.texte.trim() && !!shot.audio_url;
+    shot.prompt = prompt;
+    shot.task_id = taskId;
+    shot.phase = "video";
+    shot.duration = duration;
+    shot.error = undefined;
+    shot.cost_usd = Math.round((seedanceCost(taskType, seedance.resolution, duration) + frameCost) * 1000) / 1000;
+    return;
+  }
+
   // B-roll Seedance : identité + décor + keyframe du décor (même tenue que les plans
   // parlés) + photo et description de la tenue → continuité vestimentaire entre plans.
   const kf = loc ? await brollKeyframe(ctx, loc, shot, say) : null;
@@ -463,6 +590,7 @@ export async function submitShot(ctx: ShotContext, shot: ShotState, say?: (msg: 
     locationDescription: loc?.description ?? scene?.new_location?.description ?? null,
     city: ctx.refs.city,
     outfitDescription: ctx.outfit?.description_en ?? null,
+    person,
   };
   const prompt = native
     ? buildSeedance25Prompt({ mode: "voiceover", ...promptOpts, refs: { ...promptOpts.refs, hasVoiceRef: true }, words: shot.words, audioSeconds: shot.audio_seconds })

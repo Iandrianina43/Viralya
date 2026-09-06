@@ -21,7 +21,7 @@ function ff(args: string[], timeoutMs = 300_000, cwd?: string): Promise<void> {
 }
 
 /** Durée (s) et présence d'une piste audio, lues dans la sortie de `ffmpeg -i` (pas de ffprobe dans ffmpeg-static). */
-async function probe(file: string): Promise<{ seconds: number; hasAudio: boolean }> {
+export async function probe(file: string): Promise<{ seconds: number; hasAudio: boolean }> {
   return new Promise((resolve) => {
     execFile(FF, ["-hide_banner", "-i", file], { windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (_err, _out, stderr) => {
       const s = String(stderr);
@@ -133,8 +133,10 @@ const FINAL_ENC = ["-c:v", "libx264", "-preset", "medium", "-crf", "21", "-maxra
 export interface HybridInsert { url: string; at: number; len: number }
 
 export interface HybridPart {
-  role: "talk" | "broll";
+  role: "talk" | "broll" | "still";
   clipUrl: string;
+  /** Plan « still » (explicative sans visage) : image animée (Ken Burns) sous la voix, pas de clip. */
+  imageUrl?: string | null;
   /** Voix off à mixer (b-roll uniquement). */
   voiceUrl?: string | null;
   voiceSeconds?: number | null;
@@ -250,6 +252,27 @@ async function overlayInserts(src: string, inserts: HybridInsert[], dir: string,
   return out;
 }
 
+/**
+ * Vidéo source d'un clone : téléchargée, coupée à `maxSeconds` si besoin, ré-encodée en mp4 H.264/AAC
+ * 9:16 (1080x1920) pour que Seedance la lise sans surprise. Renvoie le fichier et sa durée.
+ */
+export async function prepareSourceVideo(url: string, maxSeconds = 30): Promise<{ video: Buffer; seconds: number; trimmed: boolean; original: number }> {
+  const dir = await mkdtemp(join(tmpdir(), "viralya-src-"));
+  try {
+    const src = join(dir, "src.bin");
+    await download(url, src);
+    const info = await probe(src);
+    if (!info.seconds) throw new Error("vidéo illisible (durée inconnue)");
+    const trimmed = info.seconds > maxSeconds + 0.2;
+    const out = join(dir, "src.mp4");
+    await ff(["-y", "-i", src, ...(trimmed ? ["-t", String(maxSeconds)] : []), "-filter_complex", `[0:v]${V_NORM}[v]`, "-map", "[v]", ...(info.hasAudio ? ["-map", "0:a"] : []), ...ENC, out], 600_000);
+    const done = await probe(out);
+    return { video: await readFile(out), seconds: Math.round(done.seconds * 10) / 10, trimmed, original: Math.round(info.seconds * 10) / 10 };
+  } finally {
+    void rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 export interface AssembleOptions {
   subtitles?: boolean;
   musicUrl?: string | null;
@@ -296,6 +319,17 @@ export async function assembleHybrid(
       const p = parts[i]!;
       const clip = join(dir, `clip${i}.mp4`);
       let out = join(dir, `part${i}.mp4`);
+      if (p.role === "still") {
+        // Image fixe animée (Ken Burns) sous la voix ElevenLabs — vidéos explicatives sans visage.
+        if (!p.imageUrl) throw new Error(`montage: plan ${i} sans image`);
+        const voice = p.voiceUrl ? join(dir, `voice${i}.mp3`) : null;
+        if (voice) await download(String(p.voiceUrl), voice);
+        const voiceSec = voice ? p.voiceSeconds ?? (await probe(voice)).seconds : 0;
+        const still = join(dir, `still${i}.mp4`);
+        await kenBurns(p.imageUrl, Math.max(3, voiceSec + 0.5), still, dir, `still${i}`);
+        if (voice) await ff(["-y", "-i", still, "-i", voice, "-filter_complex", `[0:v]${V_NORM}[v];[1:a]apad[a]`, "-map", "[v]", "-map", "[a]", "-shortest", ...ENC, out]);
+        else await ff(["-y", "-i", still, "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100", "-filter_complex", `[0:v]${V_NORM}[v]`, "-map", "[v]", "-map", "1:a", "-shortest", ...ENC, out]);
+      } else {
       await download(p.clipUrl, clip);
       const info = await probe(clip);
 
@@ -316,6 +350,7 @@ export async function assembleHybrid(
           "-y", "-i", clip, "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
           "-filter_complex", `[0:v]${V_NORM}[v]`, "-map", "[v]", "-map", "1:a", "-shortest", ...ENC, out,
         ]);
+      }
       }
 
       if (p.role === "talk" && p.inserts?.length) {

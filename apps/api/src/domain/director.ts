@@ -45,6 +45,12 @@ export interface VlogScene {
   // Lieu inédit. scope = "permanent" (il fait partie de sa vie : sa salle de bain)
   // ou "oneoff" (lieu de passage d'une seule vidéo : les toilettes d'un McDo).
   new_location?: { key: string; name: string; description: string; scope?: "permanent" | "oneoff" };
+  /** Formats sans visage : "still" = image animée au montage (Ken Burns), "clip" = rendu Seedance démarrant sur une image générée. */
+  visual?: "clip" | "still";
+  /** Image de la scène (EN, sans personne reconnaissable) : le still, ou la première image d'un clip. */
+  image_prompt?: string;
+  /** Pub produit : verrou visuel du produit (EN : forme, matière, couleurs, étiquette). */
+  product_lock?: string;
 }
 
 // Presets de vlog (ambiances de départ pour le réalisateur).
@@ -108,12 +114,13 @@ export function normalizeScenes(raw: VlogScene[]): VlogScene[] {
         mode,
         texte: String(s.texte).trim(),
         ...(inserts ? { inserts } : {}),
-        duration_sec: Math.min(SEGMENT_MAX_SECONDS, Math.max(SEGMENT_MIN_SECONDS, Math.round(Number(s.duration_sec) || 12))),
+        // 30 s max : une prise unique ou une pub produit Seedance 2.5 ; le format 2.0 re-borne à 15 s à la soumission.
+        duration_sec: Math.min(30, Math.max(SEGMENT_MIN_SECONDS, Math.round(Number(s.duration_sec) || 12))),
         action: str(s.action, legacy || "candid lifestyle moment, natural gestures"),
         shots: Array.isArray(s.shots)
           ? s.shots
               .filter((sh) => sh && typeof (sh as SceneShot).desc === "string" && String((sh as SceneShot).desc).trim())
-              .slice(0, 4)
+              .slice(0, 5)
               .map((sh) => ({ t: str((sh as SceneShot).t), desc: String((sh as SceneShot).desc).trim() }))
           : [],
         scene_desc: str(s.scene_desc),
@@ -121,6 +128,9 @@ export function normalizeScenes(raw: VlogScene[]): VlogScene[] {
         lighting: str(s.lighting, "natural light, photorealistic cinematic style"),
         audio_ambiance: str(s.audio_ambiance, "natural ambient sound of the location"),
         constraints: str(s.constraints),
+        ...(s.visual === "still" || s.visual === "clip" ? { visual: s.visual } : {}),
+        ...(str(s.image_prompt) ? { image_prompt: str(s.image_prompt) } : {}),
+        ...(str(s.product_lock) ? { product_lock: str(s.product_lock) } : {}),
         ...(s.location_key ? { location_key: slug(s.location_key) } : {}),
         ...(s.new_location?.key && s.new_location.description
           ? {
@@ -154,6 +164,19 @@ const BROLL_QUALITY = "candid handheld smartphone footage, natural unretouched s
 // « prise unique sans coupe » : les timelines décrivent des évolutions de caméra, jamais des cuts.
 const BASE_CONSTRAINTS =
   "no distortion, no morphing, exact face and outfit consistency with the reference images, single consistent person, one single uninterrupted take with NO cuts, no shot changes, no scene transitions";
+// Prise unique en plusieurs plans (Seedance 2.5) : les coupes sont voulues, uniquement entre les plans listés.
+const BASE_CONSTRAINTS_MULTI =
+  "no distortion, no morphing, exact face and outfit consistency with the reference images, single consistent person, cuts only between the listed shots, no transitions or effects, no scene change";
+
+// ── Pronoms de l'influenceur dans les prompts (test à sec du 6 sept. : « the young woman » pour Alexandre) ──
+export interface PersonWords { who: string; she: string; her: string; him: string; She: string; voice: string }
+/** Mots de genre à partir de `pronouns(avatar)` (characterBible) ; féminin par défaut. */
+export function personWords(p?: { subj: string; poss: string; who: string; Subj: string } | null): PersonWords {
+  const male = p?.subj === "he";
+  return male
+    ? { who: "young man", she: "he", her: "his", him: "him", She: "He", voice: "male" }
+    : { who: "young woman", she: "she", her: "her", him: "her", She: "She", voice: "female" };
+}
 
 // ── B-ROLL (vidéo v2 hybride) : plan d'illustration SANS parole ────────────
 // La narration (voix off ElevenLabs) est mixée au montage ; Seedance ne doit
@@ -174,8 +197,10 @@ export function buildBrollPrompt(opts: {
   city?: string | null;
   /** Description figée de la tenue (garde-robe, EN) : la même sur tous les plans de la vidéo. */
   outfitDescription?: string | null;
+  person?: PersonWords;
 }): string {
   const { scene, refs } = opts;
+  const P = opts.person ?? personWords();
   let n = 1;
   const sheetRef = refs.hasSheet ? `@image${++n}` : null;
   const locationRef = refs.hasLocationImage ? `@image${++n}` : null;
@@ -184,17 +209,17 @@ export function buildBrollPrompt(opts: {
   const parts: string[] = [];
   parts.push(
     sheetRef
-      ? `Subject: the young woman from @image1 — her identity, face and features in every angle are locked by the character sheet ${sheetRef}.`
-      : "Subject: the young woman from @image1 — keep her exact face, hair and features.",
+      ? `Subject: the ${P.who} from @image1 — ${P.her} identity, face and features in every angle are locked by the character sheet ${sheetRef}.`
+      : `Subject: the ${P.who} from @image1 — keep ${P.her} exact face, hair and features.`,
   );
   // Tenue : la même sur toute la vidéo (continuité entre plans parlés et b-roll).
   const outfitBits = [
-    keyframeRef ? `${keyframeRef} shows her in this exact location wearing her outfit for this video` : "",
-    opts.outfitDescription ? `she wears exactly: ${opts.outfitDescription}` : "",
+    keyframeRef ? `${keyframeRef} shows ${P.him} in this exact location wearing ${P.her} outfit for this video` : "",
+    opts.outfitDescription ? `${P.she} wears exactly: ${opts.outfitDescription}` : "",
     outfitRef ? `${outfitRef} is the reference photo of that outfit` : "",
   ].filter(Boolean);
   if (outfitBits.length) parts.push(`Outfit and hair: ${outfitBits.join("; ")} — same clothes, same hairstyle, same accessories as in every other shot of this video, do NOT change the outfit.`);
-  parts.push(`Action: ${scene.action}. She does NOT talk to the camera: mouth relaxed, no lip movement, no dialogue — this is a silent b-roll shot, the narration is added later.`);
+  parts.push(`Action: ${scene.action}. ${P.She} does NOT talk to the camera: mouth relaxed, no lip movement, no dialogue — this is a silent b-roll shot, the narration is added later.`);
   if (scene.shots.length) {
     parts.push(`Timeline of this single continuous take: ${scene.shots.map((sh) => `${sh.t ? `${sh.t}: ` : ""}${sh.desc}`).join("; ")}.`);
   }
@@ -222,6 +247,111 @@ export interface Seedance25PromptRefs {
   hasVoiceRef: boolean;
 }
 
+// ── Hygiène des prompts Seedance (recherche du 6 sept. 2026, docs/RECHERCHE-VIDEO-V2.md §11) ──
+// Règles convergentes des guides (ByteDance via résumés, PiAPI, fal, RunDiffusion, seedance.tv,
+// Higgsfield, Cutout) : l'adhérence DÉCROÎT avec la position (identité et tenue en tête) ; chaque
+// référence a UN rôle explicite ; plans étiquetés et horodatés avec UNE coupe franche entre deux
+// plans ; répliques COURTES par plan (phrases complètes) ; langue + livraison précisées ; sons NOMMÉS
+// et « no music » explicite ; une seule langue dans le prompt ; aucune consigne contradictoire.
+
+/** Sans ponctuation finale : les champs du réalisateur finissent souvent par un point (« .; », « .. »). */
+const tidy = (x: string) => x.replace(/[.;,:\s]+$/, "");
+
+/** Coupe un texte à `max` mots, de préférence en fin de phrase. */
+export function clipWords(text: string | null | undefined, max: number): string {
+  const words = String(text ?? "").trim().split(/\s+/).filter(Boolean);
+  if (words.length <= max) return words.join(" ");
+  const cut = words.slice(0, max).join(" ");
+  const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("; "));
+  return (end > cut.length * 0.5 ? cut.slice(0, end + 1) : cut).replace(/[,;:\s]+$/, "");
+}
+
+/** Le champ ressemble à du français (mots-outils FR plus fréquents que EN). */
+export function looksFrench(s: string): boolean {
+  const fr = (s.match(/\b(elle|les|des|une|est|avec|dans|sur|puis|pour|qui|son|ses|aux|du|au|et|vers)\b/gi) ?? []).length;
+  const en = (s.match(/\b(the|she|her|with|and|then|of|to|in|on|at|as|from|while)\b/gi) ?? []).length;
+  return fr >= 2 && fr > en;
+}
+
+/** Ambiance sans musique : la musique est ajoutée au montage et « no music » doit rester vrai. */
+export function stripMusic(ambiance: string | null | undefined): string {
+  const kept = String(ambiance ?? "")
+    .split(/[,;]+/)
+    .map((x) => x.trim())
+    .filter((x) => x && !/\b(music|song|melody|soundtrack|bgm|score|guitar|piano|playlist|radio|singing)\b/i.test(x));
+  return kept.join(", ") || "natural ambient sound of the location";
+}
+
+/** Contraintes du réalisateur sans celles gérées par le code (coupes, sous-titres) ni redites du socle. */
+export function cleanConstraints(constraints: string | null | undefined, multi: boolean): string {
+  const base = fold(`${BASE_CONSTRAINTS} ${BASE_CONSTRAINTS_MULTI}`);
+  return String(constraints ?? "")
+    .split(/,\s*/)
+    .map((x) => x.trim().replace(/\.$/, ""))
+    .filter(
+      (x) =>
+        x &&
+        !base.includes(fold(x)) &&
+        !/\b(subtitles?|on-screen text|text on screen|captions?)\b/i.test(x) &&
+        !(multi && /\b(no cuts?|single (unbroken|continuous)|uninterrupted|continuous take|no shot changes|one take|no editing)\b/i.test(x)),
+    )
+    .slice(0, 4)
+    .join(", ");
+}
+
+export interface ShotLine { t: string; desc: string; line: string }
+/** Mot horodaté (ElevenLabs) : w = mot, s/e = début/fin en secondes. */
+export interface TimedWord { w: string; s: number; e: number }
+
+const splitSentences = (texte: string): string[] => texte.split(/(?<=[.!?…])\s+/).map((x) => x.trim()).filter(Boolean);
+
+/**
+ * Répartit le texte sur les plans : chaque plan reçoit des phrases ENTIÈRES (la coupe tombe entre deux
+ * phrases), au plus près de l'instant prévu par le réalisateur (fractions des "t" de la shot list)
+ * ramené à la durée RÉELLE de la voix. Avec les mots horodatés d'ElevenLabs, les bornes sont exactes.
+ * S'il y a moins de phrases que de plans, les derniers plans sont abandonnés.
+ */
+export function assignLinesToShots(shots: SceneShot[], texte: string, words?: TimedWord[] | null, audioSeconds?: number | null): ShotLine[] {
+  if (!shots.length) return [];
+  const sentences = splitSentences(texte);
+  if (!sentences.length) return shots.map((sh) => ({ t: sh.t, desc: sh.desc, line: "" }));
+  const k = Math.min(shots.length, sentences.length);
+  const used = shots.slice(0, k);
+  const counts = sentences.map((x) => x.split(/\s+/).length);
+  const totalWords = counts.reduce((a, b) => a + b, 0);
+  const total = audioSeconds && audioSeconds > 0 ? audioSeconds : totalWords / 2.3;
+  // Début de chaque phrase (s) : horodatage réel du 1er mot, sinon proportionnel au nombre de mots.
+  const starts: number[] = [];
+  let acc = 0;
+  for (const c of counts) {
+    const w = words?.length ? words[Math.min(words.length - 1, Math.round((acc / totalWords) * words.length))] : undefined;
+    starts.push(w ? w.s : (acc / totalWords) * total);
+    acc += c;
+  }
+  // Instant visé pour chaque plan : fraction de la timeline du réalisateur, sinon parts égales.
+  const from = (t: string) => Number(/^(\d+(?:\.\d+)?)/.exec(t ?? "")?.[1] ?? NaN);
+  const to = (t: string) => Number(/-(\d+(?:\.\d+)?)\s*s?$/.exec(t ?? "")?.[1] ?? NaN);
+  const plannedTotal = Math.max(...used.map((sh) => to(sh.t)).filter((v) => !Number.isNaN(v)), 0);
+  const targets = used.map((sh, i) => (plannedTotal > 0 && !Number.isNaN(from(sh.t)) ? (from(sh.t) / plannedTotal) * total : (i / k) * total));
+  // Le plan i commence à la phrase dont le début est le plus proche de sa cible, en gardant au moins
+  // une phrase pour chaque plan restant.
+  const bounds = [0];
+  for (let i = 1; i < k; i++) {
+    let best = (bounds[i - 1] ?? 0) + 1;
+    const target = targets[i] ?? 0;
+    for (let j = best; j <= sentences.length - (k - i); j++) if (Math.abs((starts[j] ?? 0) - target) < Math.abs((starts[best] ?? 0) - target)) best = j;
+    bounds.push(best);
+  }
+  const end = Math.ceil(total);
+  return used.map((sh, i) => {
+    const from = bounds[i] ?? 0;
+    const next = i + 1 < k ? bounds[i + 1] ?? sentences.length : sentences.length;
+    const t0 = Math.round(starts[from] ?? 0);
+    const t1 = i + 1 < k ? Math.round(starts[next] ?? total) : end;
+    return { t: `${t0}–${t1}s`, desc: sh.desc, line: sentences.slice(from, next).join(" ") };
+  });
+}
+
 export function buildSeedance25Prompt(opts: {
   mode: "talk" | "voiceover";
   scene: VlogScene;
@@ -233,16 +363,20 @@ export function buildSeedance25Prompt(opts: {
   productDescription?: string | null;
   /**
    * "multi" (prise unique de 20-30 s) : le modèle COUPE entre 3-5 plans à l'intérieur du clip
-   * (angles différents, même personne et tenue) — le rythme d'un vrai Reel sans risque de rupture
-   * entre rendus séparés. "none" : plan continu sans coupe (plans courts du format monté).
+   * (angles différents, même personne et tenue), une ligne de dialogue par plan. "none" : plan
+   * continu sans coupe (plans courts du format monté, plans de coupe narrés).
    */
   cuts?: "multi" | "none";
-  /** Horodatage ElevenLabs disponible pour de futurs découpages sur les mots. */
-  words?: Array<{ w: string; s: number; e: number }> | null;
+  /** Mots horodatés de la voix ElevenLabs et durée réelle : bornes exactes des plans. */
+  words?: TimedWord[] | null;
   audioSeconds?: number | null;
+  /** Genre de l'influenceur (personWords) ; féminin par défaut. */
+  person?: PersonWords;
 }): string {
-  const { scene, refs } = opts;
-  const multi = opts.cuts === "multi";
+  const { scene, refs, cuts } = opts;
+  const P = opts.person ?? personWords();
+  const multi = cuts === "multi";
+  const talk = opts.mode === "talk";
   let n = 1;
   const sheetRef = refs.hasSheet ? `@image${++n}` : null;
   const locationRef = refs.hasLocationImage ? `@image${++n}` : null;
@@ -250,46 +384,144 @@ export function buildSeedance25Prompt(opts: {
   const outfitRef = refs.hasOutfitImage ? `@image${++n}` : null;
   const productRef = refs.hasProductImage ? `@image${++n}` : null;
   const texte = String(scene.texte ?? "").replace(/"/g, "'").trim();
-  const parts: string[] = [];
-  parts.push(
+  const L: string[] = [];
+
+  // 1. Personnage et tenue EN TÊTE (l'adhérence décroît avec la position) ; chaque référence a un rôle.
+  L.push(
     sheetRef
-      ? `Subject: the young woman from @image1 — her identity, face and features in every angle are locked by the character sheet ${sheetRef}.`
-      : "Subject: the young woman from @image1 — keep her exact face, hair and features.",
+      ? `Character: the ${P.who} in @image1 — face, hair and features from @image1 and the character sheet ${sheetRef}; ignore the backgrounds of these two images.`
+      : `Character: the ${P.who} in @image1 — keep ${P.her} exact face, hair and features; ignore the background of @image1.`,
   );
+  const wardrobe = [opts.outfitDescription ? clipWords(opts.outfitDescription, 28) : "", outfitRef ? `as photographed in ${outfitRef}` : ""].filter(Boolean).join(", ");
+  if (wardrobe) L.push(`Wardrobe: ${wardrobe} — identical in every shot, never changes.`);
+  else if (keyframeRef) L.push(`Wardrobe: exactly what ${P.she} wears in ${keyframeRef} — identical in every shot, never changes.`);
   if (productRef || opts.productDescription) {
-    parts.push(`Product: ${productRef ? `${productRef} is the EXACT product she holds and shows to the camera (same shape, colors, label)` : "she holds and shows the product to the camera"}${opts.productDescription ? ` — ${opts.productDescription}` : ""}. The product stays identical throughout, no invented packaging.`);
-  }
-  const outfitBits = [
-    keyframeRef ? `${keyframeRef} shows her in this exact location wearing her outfit for this video` : "",
-    opts.outfitDescription ? `she wears exactly: ${opts.outfitDescription}` : "",
-    outfitRef ? `${outfitRef} is the reference photo of that outfit` : "",
-  ].filter(Boolean);
-  if (outfitBits.length) parts.push(`Outfit and hair: ${outfitBits.join("; ")} — same clothes, same hairstyle, same accessories in every shot of this video.`);
-  parts.push(
-    opts.mode === "talk"
-      ? `Action: she talks to the handheld phone camera like a vlogger talking to a friend — ${scene.action}. Lively expression, natural varied hand gestures, eye contact with the lens.`
-      : `Action: ${scene.action}. She does NOT talk to the camera in this shot (mouth relaxed, no lip movement): a French voice-over narrates.`,
-  );
-  if (scene.shots.length) {
-    parts.push(
-      multi
-        ? `Shot list — the video is EDITED with ${scene.shots.length} shots, cutting between angles on the beats of her speech (like a real short-form video): ${scene.shots.map((sh) => `${sh.t ? `${sh.t}: ` : ""}${sh.desc}`).join("; ")}. Every shot shows the same person, same outfit, same place and light; the speech continues seamlessly across cuts.`
-        : `Timeline of this single continuous take: ${scene.shots.map((sh) => `${sh.t ? `${sh.t}: ` : ""}${sh.desc}`).join("; ")}.`,
+    L.push(
+      `Product: ${productRef ? `${productRef} is the exact product ${P.she} holds and shows (same shape, colors, label)` : `${P.she} holds and shows the product`}${opts.productDescription ? ` — ${clipWords(opts.productDescription, 30)}` : ""}; it never changes.`,
     );
   }
-  const sceneBits = [opts.locationDescription, scene.scene_desc].filter(Boolean).join(" — ") || scene.scene_desc || opts.city || "an authentic lifestyle setting";
-  parts.push(locationRef ? `Scene: the EXACT location shown in ${locationRef} (same walls, colors and layout) — ${sceneBits}.` : `Scene: ${sceneBits}.`);
-  parts.push(multi ? `Camera: ${scene.camera} — vertical 9:16, handheld phone, ${scene.shots.length || 3}-${Math.max(scene.shots.length || 3, 4)} distinct shots with clean cuts, medium shot for the talking parts and a close-up when she shows something.` : `Camera: ${scene.camera} — vertical 9:16, one continuous take, no cuts.`);
-  parts.push(`Lighting and style: ${scene.lighting}. ${BROLL_QUALITY}.`);
-  const voice = refs.hasVoiceRef ? " — her voice timbre matches the reference voice @audio1" : "";
-  parts.push(
-    opts.mode === "talk"
-      ? `Audio: she speaks FRENCH naturally to the camera and says exactly: "${texte}"${voice}, accurate lip-sync; ${scene.audio_ambiance || "natural ambient sound of the location"} in the background, no music.`
-      : `Audio: a French female voice-over narrates exactly: "${texte}"${voice}; ${scene.audio_ambiance || "natural ambient sound of the location"} in the background, no music.`,
+  // 2. Lieu : photo + description courte ; le keyframe (elle sur place, dans cette tenue) = look de départ.
+  const where = clipWords([opts.locationDescription, scene.scene_desc].filter(Boolean).join(". "), 40).replace(/[.\s]+$/, "") || opts.city || "an authentic everyday location";
+  L.push(`Location: ${locationRef ? `the place in ${locationRef} (same walls, colors and layout) — ` : ""}${where}.${keyframeRef ? ` ${keyframeRef} shows ${P.him} on location in this outfit: the starting look of the video.` : ""}`);
+  // 3. Style : rendu téléphone, UNE source de lumière nommée.
+  L.push(`Style: ${BROLL_QUALITY}; ${tidy(clipWords(scene.lighting, 18)) || "natural daylight"}. Vertical 9:16.`);
+  // 4. Action, caméra, plans et dialogue.
+  const action = tidy(clipWords(scene.action, 30));
+  const camera = tidy(clipWords(scene.camera, 20));
+  const cameraLine = /handheld|phone|selfie/i.test(camera) ? camera : `handheld phone${camera ? `, ${camera}` : ""}`;
+  const timeline = scene.shots.length ? `Timeline: ${scene.shots.map((sh) => `${sh.t ? `${sh.t}: ` : ""}${clipWords(sh.desc, 22)}`).join("; ")}.` : "";
+  if (talk && multi) {
+    const shots = assignLinesToShots(scene.shots.length ? scene.shots : [{ t: "", desc: camera || "medium close-up, phone at arm's length, eye level" }], texte, opts.words, opts.audioSeconds);
+    L.push(`Action: ${P.she} talks to ${P.her} phone camera like a vlogger talking to a friend — ${action}. Relaxed unhurried delivery, small real gestures, eye contact with the lens, face steady and visible while ${P.she} speaks.`);
+    L.push(`Camera: ${cameraLine}; one framing and at most one camera move per shot, medium close-up whenever ${P.she} speaks to the lens.`);
+    L.push(`Shot list — ${shots.length} shots, hard cut between shots; same person, outfit, place and light in every shot; ${P.her} speech runs seamlessly across the cuts:`);
+    shots.forEach((sh, i) => L.push(`Shot ${i + 1} (${sh.t}): ${clipWords(sh.desc, 24)}.${sh.line ? ` ${P.She} says in French: "${sh.line}"` : ""}${i < shots.length - 1 ? " [Cut to]" : ""}`));
+  } else if (talk) {
+    L.push(`Action: ${P.she} talks to ${P.her} phone camera like a vlogger talking to a friend — ${action}. Relaxed delivery, small real gestures, eye contact with the lens, face steady while ${P.she} speaks. One continuous take, no cuts.`);
+    if (timeline) L.push(timeline);
+    L.push(`Camera: ${cameraLine || "handheld phone, medium close-up at eye level"}.`);
+    L.push(`${P.She} says in French: "${texte}"`);
+  } else {
+    L.push(`Action: ${action}. ${P.She} does not talk to the camera in this shot (mouth relaxed, no lip movement); a French voice-over narrates. One continuous take, no cuts.`);
+    if (timeline) L.push(timeline);
+    L.push(`Camera: ${cameraLine || "handheld phone, natural movement"}.`);
+  }
+  // 5. Audio : rôle explicite de @audio1, sons nommés, « no music » explicite (sinon le modèle en ajoute).
+  const ambiance = tidy(stripMusic(scene.audio_ambiance));
+  L.push(
+    talk
+      ? `Audio: French dialogue only${refs.hasVoiceRef ? ` — @audio1 is ${P.her} voice saying exactly these lines: match its timbre and lip-sync to it` : ""}; every line a complete sentence, no other speaker; ambience kept low: ${ambiance}; no music, no voice-over.`
+      : `Audio: French ${P.voice} voice-over${refs.hasVoiceRef ? " — @audio1 is the narration: keep its voice and timing" : ""}, saying: "${texte}"; ambience kept low: ${ambiance}; no music, no on-camera dialogue.`,
   );
-  const base = multi ? BASE_CONSTRAINTS.replace(", one single uninterrupted take with NO cuts, no shot changes, no scene transitions", ", cuts allowed only between the listed shots, no scene transitions or effects") : BASE_CONSTRAINTS;
-  parts.push(`Constraints: ${[base, "no subtitles, no text on screen", scene.constraints].filter(Boolean).join(", ")}.`);
-  return parts.join(" ");
+  // 6. Contraintes : socle cohérent avec le mode (coupes listées ou aucune coupe), sans doublon.
+  L.push(`Constraints: ${[multi ? BASE_CONSTRAINTS_MULTI : BASE_CONSTRAINTS, "no subtitles, no text on screen", cleanConstraints(scene.constraints, multi)].filter(Boolean).join(", ")}.`);
+  return L.join("\n");
+}
+
+// ── CLONE DE VIDÉO (Seedance 2.5) : @video1 = la source à retourner avec elle, @audio1 = sa voix ──
+// Recherche du 6 sept. (docs/RECHERCHE-FORMATS.md §3) : une seule modification par passe, tout le
+// reste « unchanged » ; rôles explicites ; la parole d'origine est remplacée par @audio1.
+export function buildClonePrompt(opts: {
+  refs: { hasSheet: boolean; hasOutfitImage?: boolean; hasVoiceRef: boolean };
+  texte: string;
+  outfitDescription?: string | null;
+  person?: PersonWords;
+}): string {
+  const P = opts.person ?? personWords();
+  let n = 1;
+  const sheetRef = opts.refs.hasSheet ? `@image${++n}` : null;
+  const outfitRef = opts.refs.hasOutfitImage ? `@image${++n}` : null;
+  const texte = String(opts.texte ?? "").replace(/"/g, "'").trim();
+  const L: string[] = [];
+  L.push(
+    sheetRef
+      ? `Character: the ${P.who} in @image1 — face, hair and features from @image1 and the character sheet ${sheetRef}; ignore the backgrounds of these images.`
+      : `Character: the ${P.who} in @image1 — keep ${P.her} exact face, hair and features; ignore the background of @image1.`,
+  );
+  L.push(`Source: @video1 is the video to re-shoot with ${P.him} as the only performer. Replace the person in @video1 with ${P.him}: reproduce @video1 shot for shot — same framing, camera motion, cuts, timing, gestures, expressions, background, props and lighting, same duration. Nothing else changes.`);
+  const wardrobe = [opts.outfitDescription ? clipWords(opts.outfitDescription, 28) : "", outfitRef ? `as photographed in ${outfitRef}` : ""].filter(Boolean).join(", ");
+  L.push(wardrobe ? `Wardrobe: ${wardrobe} — identical throughout.` : `Wardrobe: an outfit in the same style as the person in @video1, fitted to ${P.him}, identical throughout.`);
+  L.push(
+    texte
+      ? `Audio: ${P.she} speaks French${opts.refs.hasVoiceRef ? ` — @audio1 is ${P.her} voice saying these exact lines: lip-sync ${P.her} mouth to @audio1 and replace the original speech entirely` : ""}: "${texte}"; keep the ambience of @video1 low; no music.`
+      : "Audio: keep the ambience of @video1; no added music, no dialogue.",
+  );
+  L.push("Constraints: no distortion, no morphing, exact face consistency with @image1, a single person as in @video1, no subtitles, no text on screen.");
+  return L.join("\n");
+}
+
+// ── FORMATS SANS VISAGE (Seedance 2.5) : clip d'explicative (première image générée) ou pub produit ──
+// Recherche du 6 sept. (docs/RECHERCHE-FORMATS.md §1-2) : « product lock » en tête, 4 temps horodatés
+// (accroche, preuve, résultat, image finale propre), une action lisible et un mouvement par plan,
+// prix/texte/CTA ajoutés au montage, négatifs précis ; explicative = un visuel littéral par idée.
+export interface FacelessPromptOpts {
+  kind: "explainer" | "ad";
+  scene: VlogScene;
+  /** Pub : nombre d'images produit fournies en tête (@image1..N). */
+  productImages?: number;
+  /** Explicative : @image1 = première image générée du clip. */
+  hasFrame?: boolean;
+  hasVoiceRef: boolean;
+  productDescription?: string | null;
+  person?: PersonWords;
+}
+
+export function buildFacelessPrompt(opts: FacelessPromptOpts): string {
+  const { scene } = opts;
+  const P = opts.person ?? personWords();
+  const texte = String(scene.texte ?? "").replace(/"/g, "'").trim();
+  const ambiance = tidy(stripMusic(scene.audio_ambiance));
+  const setting = clipWords([scene.scene_desc, scene.image_prompt].filter(Boolean).join(". "), 45).replace(/[.\s]+$/, "") || "a clean, realistic setting";
+  const L: string[] = [];
+  if (opts.kind === "ad") {
+    const n = opts.productImages ?? 0;
+    const refs = n >= 2 ? "@image1 (front) and @image2 (second angle) show" : n === 1 ? "@image1 shows" : "";
+    L.push(
+      `Product: ${refs ? `${refs} the exact product: preserve its ` : "preserve the product's "}exact shape, material, colors, label placement and proportions in every shot${scene.product_lock ? ` — ${clipWords(scene.product_lock, 30)}` : ""}${opts.productDescription ? ` (${clipWords(opts.productDescription, 25)})` : ""}. It never changes; no invented packaging, text or logos.`,
+    );
+    L.push(`Setting: ${setting}. Style: ${tidy(clipWords(scene.lighting, 18)) || "motivated natural light"}; photorealistic commercial cinematography, real textures, restrained motion blur. Vertical 9:16.`);
+    const shots = scene.shots.length ? scene.shots : [{ t: "", desc: clipWords(scene.action, 24) }];
+    L.push(`Shot list — ${shots.length} shots, hard cut between shots, one readable action and one camera move per shot, the product readable in every shot:`);
+    shots.forEach((sh, i) => L.push(`Shot ${i + 1}${sh.t ? ` (${sh.t})` : ""}: ${clipWords(sh.desc, 26).replace(/[.\s]+$/, "")}.${i < shots.length - 1 ? " [Cut to]" : ""}`));
+    L.push(
+      texte
+        ? `Audio: French ${P.voice} voice-over${opts.hasVoiceRef ? " — @audio1 is the narration: keep its voice and timing" : ""}, saying: "${texte}"; ${ambiance}; no music, no on-camera dialogue.`
+        : `Audio: ${ambiance}; no music, no dialogue.`,
+    );
+    L.push(`Constraints: no distortion, no morphing, no product deformation, no duplicate product, no hand or finger artefacts, no text, logos, prices or captions on screen, no subtitles, cuts only between the listed shots, no transitions or effects${scene.constraints ? `, ${cleanConstraints(scene.constraints, true)}` : ""}.`);
+  } else {
+    L.push(`${opts.hasFrame ? "Start from @image1 as the first frame and continue it. " : ""}Scene: ${setting}.`);
+    L.push(`Action: ${tidy(clipWords(scene.action, 30))}. No recognizable person on screen (hands or distant silhouettes at most), no text.`);
+    if (scene.shots.length) L.push(`Timeline: ${scene.shots.map((sh) => `${sh.t ? `${sh.t}: ` : ""}${clipWords(sh.desc, 22)}`).join("; ")}.`);
+    L.push(`Camera: ${tidy(clipWords(scene.camera, 20)) || "slow push-in"} — one continuous take, no cuts. Style: ${tidy(clipWords(scene.lighting, 18)) || "natural light"}; realistic footage, real textures. Vertical 9:16.`);
+    L.push(
+      texte
+        ? `Audio: French ${P.voice} voice-over${opts.hasVoiceRef ? " — @audio1 is the narration: keep its voice and timing" : ""}, saying: "${texte}"; ${ambiance} kept low; no music.`
+        : `Audio: ${ambiance}; no music, no dialogue.`,
+    );
+    L.push(`Constraints: no distortion, no morphing, no people's faces, no text on screen, no subtitles, one continuous take, no cuts${scene.constraints ? `, ${cleanConstraints(scene.constraints, false)}` : ""}.`);
+  }
+  return L.join("\n");
 }
 
 /** Références réellement fournies au segment — pilote les @mentions du prompt. */
@@ -306,8 +538,10 @@ export function buildSegmentPrompt(opts: {
   refs: SegmentPromptRefs;
   locationDescription?: string | null;
   city?: string | null;
+  person?: PersonWords;
 }): string {
   const { scene, refs } = opts;
+  const P = opts.person ?? personWords();
   const voiceRef = refs.voiceRefs >= 2 ? "@audio1 and @audio2" : "@audio1";
   // Indices d'images dynamiques : portrait toujours @image1, puis planche, puis lieu.
   const sheetRef = refs.hasSheet ? "@image2" : null;
@@ -324,8 +558,8 @@ export function buildSegmentPrompt(opts: {
   // 1. Sujet — l'identité vient des références.
   parts.push(
     sheetRef
-      ? `Subject: the young woman from @image1 — her identity, face and features in every angle are locked by the character sheet ${sheetRef}.`
-      : "Subject: the young woman from @image1 — keep her exact face, hair and features.",
+      ? `Subject: the ${P.who} from @image1 — ${P.her} identity, face and features in every angle are locked by the character sheet ${sheetRef}.`
+      : `Subject: the ${P.who} from @image1 — keep ${P.her} exact face, hair and features.`,
   );
 
   // 2. Action + timeline (temps forts d'UNE SEULE prise continue, pas des plans coupés).
@@ -360,8 +594,8 @@ export function buildSegmentPrompt(opts: {
     const ref = refs.voiceRefs > 0 ? ` — her voice matches the reference voice ${voiceRef}` : "";
     audio.push(
       scene.mode === "talk"
-        ? `she speaks French naturally to the camera and says: "${texte}"${ref}, with accurate lip-sync`
-        : `a French female voice-over narrates: "${texte}"${refs.voiceRefs > 0 ? ` — voice matching ${voiceRef}` : ""}; she does not talk to the camera`,
+        ? `${P.she} speaks French naturally to the camera and says: "${texte}"${ref}, with accurate lip-sync`
+        : `a French ${P.voice} voice-over narrates: "${texte}"${refs.voiceRefs > 0 ? ` — voice matching ${voiceRef}` : ""}; ${P.she} does not talk to the camera`,
     );
   }
   audio.push(scene.audio_ambiance || "natural ambient sound of the location");
@@ -378,6 +612,12 @@ export function buildSegmentPrompt(opts: {
 
   return parts.join(" ");
 }
+
+// Langue et hygiène des champs de direction (recherche du 6 sept. 2026, dossier vidéo §11) : le prompt
+// Seedance doit être en une seule langue, sans musique dans l'ambiance ni consigne contradictoire.
+const DIRECTION_RULES = `LANGUE DE LA DIRECTION : "action", "shots[].desc", "scene_desc", "camera", "lighting", "audio_ambiance", "constraints" et "inserts[].desc" sont en ANGLAIS, sans exception (le modèle vidéo lit l'anglais ; du français dans ces champs dégrade le rendu). Seul "texte" est en français.
+- "audio_ambiance" : 2 à 4 sons d'ambiance NOMMÉS (café chatter, cutlery, a scooter passing…), JAMAIS de musique ni d'instrument (la musique est ajoutée au montage).
+- "constraints" : uniquement des contraintes de continuité propres à la scène (props, figurants, coiffure) — rien sur les coupes, les sous-titres ou le texte à l'écran, gérés par le code.`;
 
 // Écriture du texte parlé — commun aux deux formats. Retour utilisateur du 4 sept. 2026 :
 // « texte creux » (« c'est magnifique », « chaque porte raconte une histoire »…).
@@ -411,7 +651,9 @@ CHAQUE SCÈNE EMBARQUE SA DIRECTION CINÉMATOGRAPHIQUE — champs séparés, en 
 - "audio_ambiance" : les sons d'ambiance PRÉCIS attendus (birds, café chatter, traffic hum, water running…). Le dialogue vient de "texte", ne le répète pas ici.
 - "constraints" : contraintes de cohérence ADAPTÉES au contexte de la scène (ex. keep the same ponytail, no on-screen text, background people stay blurred, the coffee cup stays in her hand…).
 
-CONTINUITÉ ENTRE SCÈNES (extension vidéo) : chaque scène à partir de la 2e est générée comme la SUITE DIRECTE de la vidéo précédente. Son "action" et le 1er temps de sa timeline doivent donc DÉMARRER EXACTEMENT là où la scène précédente s'arrête (même geste en cours, même déplacement) — jamais une nouvelle ouverture ni une re-présentation. Si l'histoire change de lieu, le DÉPLACEMENT se fait À L'ÉCRAN dans la scène.`;
+CONTINUITÉ ENTRE SCÈNES (extension vidéo) : chaque scène à partir de la 2e est générée comme la SUITE DIRECTE de la vidéo précédente. Son "action" et le 1er temps de sa timeline doivent donc DÉMARRER EXACTEMENT là où la scène précédente s'arrête (même geste en cours, même déplacement) — jamais une nouvelle ouverture ni une re-présentation. Si l'histoire change de lieu, le DÉPLACEMENT se fait À L'ÉCRAN dans la scène.
+
+${DIRECTION_RULES}`;
 
 // ── Format HYBRIDE (vidéo v2) : Reel MONTÉ — plans parlés en lip-sync (voix ElevenLabs)
 // + plans de coupe. Conventions 2026 (recherche du 4 sept.) : accroche visage dès la 1re
@@ -435,8 +677,9 @@ CHAQUE SCÈNE EMBARQUE SA DIRECTION — champs séparés, en ANGLAIS, AUCUN cham
 - "scene_desc" : détails d'environnement AU-DELÀ du lieu canonique (accessoires, météo visible, passants, objets qu'elle manipule…).
 - "camera" : talk = cadrage face caméra à hauteur d'yeux, buste ou taille (« medium shot from the waist up, hands visible », « selfie angle ») ; voiceover = mouvement + angle (handheld tracking, slow push-in, low angle…).
 - "lighting" : ambiance lumineuse réaliste (one light source, natural daylight, window light…), pas de vocabulaire « cinematic 4K ».
-- "audio_ambiance" : sons d'ambiance PRÉCIS du lieu. Le dialogue vient de "texte", ne le répète pas ici.
-- "constraints" : contraintes de cohérence ADAPTÉES à la scène (same ponytail, no on-screen text, background people blurred…).`;
+- "audio_ambiance" et "constraints" : voir ci-dessous.
+
+${DIRECTION_RULES}`;
 
 // ── PLAN-SÉQUENCE UNIQUE (Seedance 2.5, 30 s d'un coup) ──
 // Retour utilisateur du 4 sept. (soir) sur la vidéo montée en 7 plans : tenue qui change entre les
@@ -444,11 +687,13 @@ CHAQUE SCÈNE EMBARQUE SA DIRECTION — champs séparés, en ANGLAIS, AUCUN cham
 // seule voix, un récit d'une traite.
 const SINGLE_TAKE_RULES = `RÈGLES — PLAN-SÉQUENCE UNIQUE (UNE seule vidéo de 30 secondes, sans montage, générée d'un coup) :
 - Renvoie EXACTEMENT UNE scène : "mode":"talk", "duration_sec":30, "location_key" = LE LIEU OÙ L'HISTOIRE SE PASSE. Si ce lieu n'existe pas dans son univers, crée-le avec "new_location" (scope "oneoff") — ne déplace JAMAIS l'histoire dans un autre décor pour réutiliser un lieu existant, et ne la raconte jamais « après coup » depuis chez elle : on la filme SUR PLACE, pendant que ça arrive.
-- "texte" = TOUT ce qu'elle dit pendant la vidéo, d'une traite : 45 à 60 mots, JAMAIS plus de 60 (≈ 2,3 mots par seconde ; la vidéo est coupée net à 30 s). Elle raconte à une amie ce qui lui arrive, dans l'ordre : 1) une phrase simple qui situe (où elle est, ce qu'elle fait), 2) ce qui se passe, 3) la chute ou la question finale.
-- "action" : ce qu'elle FAIT pendant qu'elle parle, en lien avec le récit (assise à la table, la carte en main, l'assiette arrive, elle goûte…).
-- "shots" : le DÉCOUPAGE en 3 à 5 plans à l'intérieur de la vidéo ([{"t":"0-7s","desc":"..."}, …]) couvrant les 30 s : un changement d'angle par temps fort du récit (plan moyen face caméra, gros plan sur ce qu'elle montre ou sur son visage, plan plus large avec le décor, retour face caméra pour la chute). Chaque "desc" (EN) dit l'angle ET ce qui se passe. Elle parle à la caméra pendant toute la vidéo ; même personne, même tenue, même lieu d'un plan à l'autre.
+- "texte" = TOUT ce qu'elle dit pendant la vidéo, d'une traite : 45 à 60 mots, JAMAIS plus de 60 (≈ 2,3 mots par seconde ; la vidéo est coupée net à 30 s), en 4 à 6 phrases COURTES (8 à 14 mots chacune, phrases complètes) : chaque phrase est une ligne de dialogue, et la coupe entre deux plans tombe entre deux phrases. Elle raconte à une amie ce qui lui arrive, dans l'ordre : 1) une phrase simple qui situe (où elle est, ce qu'elle fait), 2) ce qui se passe, 3) la chute ou la question finale.
+- "action" (EN, 15 à 30 mots) : ce qu'elle FAIT pendant qu'elle parle, en lien avec le récit (seated at the table, menu in hand, the plate arrives, she tastes it…).
+- "shots" : le DÉCOUPAGE en 3 à 5 plans couvrant les 30 s ([{"t":"0-7s","desc":"..."}, …]), une coupe franche entre deux plans, une coupe par temps fort du récit. Chaque "desc" (EN, 12 à 20 mots) = TAILLE DU PLAN + UN SEUL mouvement de caméra + ce qui se passe, ex. « medium close-up, phone at arm's length, slight handheld sway: she holds up the menu and points at a line ». Pendant qu'elle parle : visage bien visible, de face ou de trois-quarts, caméra stable, pas de rotation de tête. Le 1er plan est un plan rapproché face caméra (l'accroche) ; un plan montre DE PRÈS ce dont elle parle ; un plan plus large montre le lieu ; retour face caméra pour la chute. Même personne, même tenue, même lieu d'un plan à l'autre.
 - "inserts" : 0 à 2 illustrations (voir ci-dessus) ancrées sur des mots exacts du texte.
-- "camera", "lighting", "audio_ambiance", "constraints" : comme d'habitude (EN).
+- "camera" (EN) : le dispositif général (« handheld phone at arm's length, eye level ») ; "lighting" (EN) : UNE source de lumière nommée (« late afternoon sun from the left ») ; "audio_ambiance" et "constraints" : voir ci-dessous.
+
+${DIRECTION_RULES}
 
 ${SCRIPT_RULES}`;
 
@@ -632,6 +877,40 @@ export async function breakIntoScenes(
   if (scenes.length === 0) {
     throw new Error("Le découpage n'a pas abouti (réponse du modèle inexploitable). Réessaie, ou raccourcis l'histoire.");
   }
+  return ensureEnglishDirection(scenes);
+}
+
+const DIRECTION_FIELDS = ["action", "scene_desc", "camera", "lighting", "audio_ambiance", "constraints"] as const;
+
+/**
+ * Le modèle vidéo lit l'anglais : un prompt mixte est un mode d'échec documenté (recherche du 6 sept.).
+ * Le réalisateur écrit parfois la direction en français malgré la consigne (prise unique du 4 sept. :
+ * 559 mots dont la timeline en français) : on traduit alors ces champs en un appel court, sans toucher
+ * au "texte" parlé. En cas d'échec, les scènes repartent telles quelles (jamais bloquant).
+ */
+export async function ensureEnglishDirection(scenes: VlogScene[]): Promise<VlogScene[]> {
+  const todo: Array<{ get: () => string; set: (v: string) => void }> = [];
+  for (const sc of scenes) {
+    for (const f of DIRECTION_FIELDS) if (looksFrench(sc[f])) todo.push({ get: () => sc[f], set: (v) => { sc[f] = v; } });
+    for (const sh of sc.shots) if (looksFrench(sh.desc)) todo.push({ get: () => sh.desc, set: (v) => { sh.desc = v; } });
+    for (const f of ["image_prompt", "product_lock"] as const) if (looksFrench(sc[f] ?? "")) todo.push({ get: () => sc[f] ?? "", set: (v) => { sc[f] = v; } });
+    for (const ins of sc.inserts ?? []) if (ins.desc && looksFrench(ins.desc)) todo.push({ get: () => ins.desc ?? "", set: (v) => { ins.desc = v; } });
+  }
+  if (!todo.length) return scenes;
+  try {
+    const raw = await generateText(
+      "Tu traduis en ANGLAIS des indications de mise en scène destinées à un modèle vidéo : verbes concrets, vocabulaire caméra standard (medium close-up, handheld, slow push-in…), même longueur. Réponds UNIQUEMENT par l'objet JSON {\"en\": [...]} : un tableau de chaînes, même ordre et même nombre que l'entrée, sans commentaire.",
+      JSON.stringify(todo.map((t) => t.get())),
+      Math.min(4000, 300 + todo.length * 120),
+      { effort: "low" },
+    );
+    const out = extractJson<{ en?: string[] }>(raw)?.en;
+    if (!Array.isArray(out) || out.length !== todo.length) throw new Error(`${Array.isArray(out) ? out.length : "?"} éléments traduits pour ${todo.length}`);
+    todo.forEach((t, i) => { if (typeof out[i] === "string" && out[i].trim()) t.set(out[i].trim()); });
+    logger.info("direction_translated", { fields: todo.length });
+  } catch (err) {
+    logger.warn("direction_translate_failed", { err: String((err as Error)?.message ?? err).slice(0, 200), fields: todo.length });
+  }
   return scenes;
 }
 
@@ -686,7 +965,7 @@ export async function directVlog(input: DirectorInput, onToken: (t: string) => v
 
   const dataStr = delimFound ? full.slice(full.indexOf(DELIM) + DELIM.length) : full;
   const parsed = extractJson<{ title?: string; caption?: string; hashtags?: string[]; scenes?: VlogScene[] }>(dataStr);
-  const scenes = normalizeScenes(parsed?.scenes ?? []);
+  const scenes = await ensureEnglishDirection(normalizeScenes(parsed?.scenes ?? []));
   if (scenes.length === 0) throw new Error("Le réalisateur n'a pas produit de scènes exploitables.");
 
   return {

@@ -171,6 +171,10 @@ export interface VlogScene {
   action: string; shots: SceneShot[]; scene_desc: string; camera: string;
   lighting: string; audio_ambiance: string; constraints: string;
   inserts?: SceneInsert[];
+  /** Formats sans visage : image animée au montage ou clip Seedance démarrant sur une image générée. */
+  visual?: "clip" | "still";
+  image_prompt?: string;
+  product_lock?: string;
   location_key?: string;
   new_location?: { key: string; name: string; description: string; scope?: LocationScope };
 }
@@ -197,7 +201,12 @@ export interface ShotState {
   qc?: { face_score: number | null; face_height?: number | null; verdict: string; note?: string } | null;
   cost_usd?: number; error?: string;
 }
-export interface ProduceOptions { format?: VideoFormat; talkProvider?: TalkProvider; talkMode?: TalkMode; subtitles?: boolean; music?: boolean; singleTake?: boolean }
+export interface ProduceOptions { format?: VideoFormat; talkProvider?: TalkProvider; talkMode?: TalkMode; subtitles?: boolean; music?: boolean; singleTake?: boolean; inserts?: boolean }
+
+// Formats (6 sept. 2026) : pub produit sans visage, pub avec l'influenceur, explicative sans visage, clone de vidéo.
+export type FormatKind = "vlog" | "ad_product" | "ad_creator" | "explainer" | "clone";
+export interface FormatProduct { name: string; description: string; image_url?: string | null; image_urls?: string[] }
+export interface CloneSource { url: string; seconds: number; trimmed: boolean; original: number }
 
 export interface ElevenVoice { voice_id: string; name: string; preview_url: string | null; description: string; gender: string | null; language: string | null }
 export interface ChatResult { reply: string; draft: AvatarDraft; ready: boolean }
@@ -236,6 +245,14 @@ async function readSse(res: Response, onEvent: (evt: Record<string, any>) => voi
       onEvent(JSON.parse(line.slice(5).trim()) as Record<string, any>);
     }
   }
+}
+
+/** Envoi d'un fichier en corps brut (vidéo source d'un clone, photo produit). */
+async function rawUpload<T>(path: string, file: File, contentType: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "content-type": contentType, ...authHeaders() }, body: file });
+  const body = (await res.json().catch(() => null)) as { error?: string; message?: string } | null;
+  if (!res.ok) throw new Error(body?.error ?? body?.message ?? `Envoi impossible (HTTP ${res.status})`);
+  return body as T;
 }
 
 function post(path: string, body: unknown): Promise<Response> {
@@ -405,9 +422,23 @@ export const api = {
       method: "POST",
       body: JSON.stringify({
         avatar_id: avatarId, production, location_scopes: locationScopes, video_model: videoModel, resolution,
-        format: opts.format ?? "hybrid", talk_provider: opts.talkProvider, talk_mode: opts.talkMode, subtitles: opts.subtitles, music: opts.music, single_take: opts.singleTake !== false,
+        format: opts.format ?? "hybrid", talk_provider: opts.talkProvider, talk_mode: opts.talkMode, subtitles: opts.subtitles, music: opts.music, single_take: opts.singleTake !== false, inserts: opts.inserts === true,
       }),
     }),
+
+  // Formats : script (relu dans l'assistant), estimation, lancement.
+  formatScript: (avatarId: string, kind: FormatKind, b: { brief?: string; product?: FormatProduct; duration_sec?: number; voice_over?: boolean; instruction?: string }) =>
+    req<{ production: VlogProduction }>("/studio/formats/script", { method: "POST", body: JSON.stringify({ avatar_id: avatarId, kind, ...b }) }),
+  formatEstimate: (kind: FormatKind, production: VlogProduction, b: { resolution?: SeedanceResolution; music?: boolean; inserts?: boolean } = {}) =>
+    req<{ total_usd: number; per_shot_usd: number[] }>("/studio/formats/estimate", { method: "POST", body: JSON.stringify({ kind, production, ...b }) }),
+  formatProduce: (avatarId: string, kind: FormatKind, production: VlogProduction, b: { resolution?: SeedanceResolution; music?: boolean; inserts?: boolean; subtitles?: boolean; product?: FormatProduct; source_video_url?: string; source_seconds?: number } = {}) =>
+    req<{ ok: boolean; job_id: string; content_item_id: string; estimated_cost_usd: number }>("/studio/formats/produce", { method: "POST", body: JSON.stringify({ avatar_id: avatarId, kind, production, ...b }) }),
+  // Clone : source déposée (corps brut) ou téléchargée depuis un lien, puis transcrite.
+  cloneUpload: (avatarId: string, file: File) => rawUpload<CloneSource>(`/studio/clone/upload?avatar_id=${encodeURIComponent(avatarId)}`, file, file.type || "video/mp4"),
+  cloneLink: (avatarId: string, url: string) => req<CloneSource>("/studio/clone/link", { method: "POST", body: JSON.stringify({ avatar_id: avatarId, url }) }),
+  cloneTranscribe: (avatarId: string, sourceUrl: string, language?: string) =>
+    req<{ text: string; seconds: number; model: string }>("/studio/clone/transcribe", { method: "POST", body: JSON.stringify({ avatar_id: avatarId, source_url: sourceUrl, language }) }),
+  uploadImage: (avatarId: string, file: File) => rawUpload<{ url: string }>(`/studio/upload-image?avatar_id=${encodeURIComponent(avatarId)}`, file, file.type || "image/jpeg"),
 
   listVideoModels: () => req<VideoModelsCatalog>("/studio/video-models"),
   piapiBalance: () => req<PiapiBalance>("/studio/piapi-balance"),
