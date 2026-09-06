@@ -2,6 +2,7 @@ import { Building2, ChevronDown, ClipboardCheck, Compass, LayoutDashboard, ListC
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth";
+import { MediaViewerProvider } from "./components/MediaViewer";
 import { ToastProvider } from "./components/ui";
 import { AvatarEditor } from "./pages/AvatarEditor";
 import { Avatars } from "./pages/Avatars";
@@ -218,7 +219,9 @@ export function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <Shell />
+        <MediaViewerProvider>
+          <Shell />
+        </MediaViewerProvider>
       </ToastProvider>
     </AuthProvider>
   );

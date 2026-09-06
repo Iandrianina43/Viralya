@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { api, type Avatar, type ContentItem, type PiapiBalance, type PiapiHistory } from "../api";
 import { useAuth } from "../auth";
 import { AvatarPhoto } from "../components/AvatarPhoto";
+import { MediaButton } from "../components/MediaViewer";
 import { Onboarding } from "../components/Onboarding";
 
 // ─────────────────────────────────────────────────────────────
@@ -202,7 +203,7 @@ export function Dashboard() {
                       <span className="text-slate-400 tabular-nums shrink-0 w-24">{new Date(h.created_at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
                       <span className="text-slate-600 capitalize truncate">{model}</span>
                       <span className={`px-1.5 py-0.5 rounded-full text-[10px] shrink-0 ${ok ? "bg-green-50 text-green-700" : h.status === "failed" ? "bg-rose-50 text-rose-600" : "bg-slate-100 text-slate-500"}`}>{ok ? "ok" : h.status}</span>
-                      {h.video_url && <a href={h.video_url} target="_blank" rel="noreferrer" className="text-accent hover:underline shrink-0">voir</a>}
+                      {h.video_url && <MediaButton url={h.video_url} title={model} className="text-accent hover:underline shrink-0">voir</MediaButton>}
                       <span className="ml-auto font-medium text-ink tabular-nums shrink-0">{h.cost_usd.toFixed(2)} $</span>
                     </div>
                   );

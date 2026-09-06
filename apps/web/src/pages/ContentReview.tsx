@@ -1,4 +1,5 @@
-import { Check, ExternalLink, History, RotateCcw, Send, X, XCircle } from "lucide-react";
+import { Check, History, Play, RotateCcw, Send, X, XCircle } from "lucide-react";
+import { MediaButton } from "../components/MediaViewer";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type ContentItem, type ContentVersion } from "../api";
@@ -74,7 +75,7 @@ function Versions({ item, onRestored }: { item: ContentItem; onRestored: () => v
             <span className="font-mono text-[12px] text-accent w-8">v{v.version_no}</span>
             <span className="text-[13px] text-ink flex-1 min-w-0 truncate">{v.note ?? "—"}</span>
             <span className="text-[12px] text-muted shrink-0">{when(v.created_at)}</span>
-            {a.video_url && <a href={a.video_url} target="_blank" rel="noreferrer" className="text-[12px] font-semibold text-accent hover:underline">vidéo</a>}
+            {a.video_url && <MediaButton url={a.video_url} title={`Version ${v.version_no}`} subtitle={v.note} className="text-[12px] font-semibold text-accent hover:underline">vidéo</MediaButton>}
             {v.version_no !== item.current_version && (
               <Button variant="secondary" size="sm" loading={busy === v.version_no} onClick={() => void restore(v.version_no)}>Restaurer</Button>
             )}
@@ -169,9 +170,9 @@ export function ContentReview() {
               </div>
               {(a.image_url || a.image_urls?.length) && (
                 <div className="flex flex-wrap items-start gap-3 mb-3">
-                  <a href={a.image_url ?? a.image_urls![a.image_urls!.length - 1]} target="_blank" rel="noreferrer" className="block shrink-0">
+                  <MediaButton url={(a.image_url ?? a.image_urls![a.image_urls!.length - 1])!} kind="image" title={title} className="block shrink-0">
                     <img src={a.image_url ?? a.image_urls![a.image_urls!.length - 1]} alt={title} className="h-64 w-auto rounded border border-rule-soft object-cover" loading="lazy" />
-                  </a>
+                  </MediaButton>
                   <div className="text-[13px] text-muted space-y-1.5">
                     {a.qc && <div><Pill tone={qcTone}>{a.qc.verdict === "pass" ? "visage conforme" : a.qc.verdict === "review" ? "visage à vérifier" : a.qc.verdict === "fail" ? "visage douteux" : "visage non contrôlé"}{a.qc.face_score != null ? ` · ${a.qc.face_score.toFixed(2)}` : ""}</Pill></div>}
                     {a.image_model && <div className="font-mono text-[12px]">{a.image_model}</div>}
@@ -186,9 +187,9 @@ export function ContentReview() {
 
               <div className="flex flex-wrap items-center gap-2 mt-3">
                 {a.video_url && (
-                  <a href={a.video_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 h-8 px-2 font-sans text-[13px] font-semibold text-accent hover:underline underline-offset-2">
-                    <ExternalLink className="w-3.5 h-3.5" /> Voir la vidéo
-                  </a>
+                  <MediaButton url={a.video_url} title={title} subtitle={it.avatar_name ?? null} className="inline-flex items-center gap-1 h-8 px-2 font-sans text-[13px] font-semibold text-accent hover:underline underline-offset-2">
+                    <Play className="w-3.5 h-3.5" /> Voir la vidéo
+                  </MediaButton>
                 )}
                 {canReview && <Button size="sm" icon={<Check className="w-3.5 h-3.5" />} loading={busy === it.id} onClick={() => void act(it.id, (id) => api.approveContent(id), "Contenu approuvé et programmé.")}>Approuver &amp; programmer</Button>}
                 {(canReview || it.status === "scheduled") && <Button size="sm" variant="secondary" icon={<Send className="w-3.5 h-3.5" />} loading={busy === it.id} onClick={() => void act(it.id, api.publishNow, "Publié sur le compte de l'influenceur.")}>Publier maintenant</Button>}

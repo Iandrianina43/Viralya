@@ -1,3 +1,4 @@
+import { MediaButton } from "./MediaViewer";
 import { CheckCircle2, ChevronDown, ChevronRight, Clapperboard, Film, Link2, Loader2, Mic, Play, RefreshCw, ScrollText, StopCircle, Volume2, X, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ContentItem, SegmentState, ShotState, VlogLogEntry, VlogProduction } from "../api";
@@ -178,9 +179,9 @@ export function ProductionRoom({
                     <Film className={`w-6 h-6 ${sh?.phase === "video" ? "text-accent animate-pulse" : "text-white/30"}`} />
                   )}
                   {sh?.clip_url && (
-                    <a href={sh.clip_url} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black/25 hover:bg-black/40 transition">
+                    <MediaButton url={sh.clip_url} title={`${i + 1}. ${sh.titre}`} subtitle={sh.provider ? PROVIDER_LABEL[sh.provider] ?? sh.provider : null} className="absolute inset-0 flex items-center justify-center bg-black/25 hover:bg-black/40 transition">
                       <span className="w-9 h-9 rounded-full bg-white/90 flex items-center justify-center"><Play className="w-4 h-4 text-ink fill-ink ml-0.5" /></span>
-                    </a>
+                    </MediaButton>
                   )}
                   <span className={`absolute top-2 left-2 text-[10px] px-1.5 py-0.5 rounded-full ${sh?.phase === "done" ? "bg-green-100 text-green-700" : sh?.phase === "failed" ? "bg-rose-100 text-rose-700" : "bg-white/85 text-slate-600"}`}>
                     {ph ? ph.label : "en attente"}
@@ -278,9 +279,9 @@ export function ProductionRoom({
                     <Film className={`w-6 h-6 ${st?.phase === "video" ? "text-accent animate-pulse" : "text-white/30"}`} />
                   )}
                   {st?.clip_url && (
-                    <a href={st.clip_url} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black/25 hover:bg-black/40 transition">
+                    <MediaButton url={st.clip_url} title={`Segment ${i + 1}`} className="absolute inset-0 flex items-center justify-center bg-black/25 hover:bg-black/40 transition">
                       <span className="w-9 h-9 rounded-full bg-white/90 flex items-center justify-center"><Play className="w-4 h-4 text-ink fill-ink ml-0.5" /></span>
-                    </a>
+                    </MediaButton>
                   )}
                   <span className={`absolute top-2 left-2 text-[10px] px-1.5 py-0.5 rounded-full ${st?.phase === "done" ? "bg-green-100 text-green-700" : st?.phase === "failed" ? "bg-rose-100 text-rose-700" : "bg-white/85 text-slate-600"}`}>
                     {ph ? ph.label : "en attente"}
@@ -352,7 +353,7 @@ export function ProductionRoom({
       {/* Résultat final */}
       {finished && assets.video_url && (
         <div className="flex items-center gap-3 mt-4 flex-wrap">
-          <a href={assets.video_url} target="_blank" rel="noreferrer" className="btn-primary inline-flex items-center gap-2"><Play className="w-4 h-4" /> Voir la vidéo complète</a>
+          <MediaButton url={assets.video_url} title="Vidéo complète" subtitle={assets.video_seconds ? `${Math.round(assets.video_seconds)} s` : null} className="btn-primary inline-flex items-center gap-2"><Play className="w-4 h-4" /> Voir la vidéo complète</MediaButton>
           {hybrid && <span className="text-xs text-slate-400">{assets.video_seconds ? `${Math.round(assets.video_seconds)} s` : ""}{assets.subtitled ? " · sous-titrée" : ""}{canRegenerate ? " · chaque plan peut être régénéré, la vidéo est remontée" : ""}</span>}
         </div>
       )}

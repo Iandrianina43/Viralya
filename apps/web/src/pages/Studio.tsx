@@ -1,3 +1,4 @@
+import { MediaButton } from "../components/MediaViewer";
 import {
   BookOpen, CheckCircle2, Clapperboard, Coffee, Film, Footprints, Image as ImageIcon,
   Loader2, Mic, Pencil, Play, Sparkles, Sunrise, Video, Wand2, X, XCircle,
@@ -316,7 +317,7 @@ export function Studio() {
             </div>
           </div>
 
-          {gp.done && gp.videoUrl && <a href={gp.videoUrl} target="_blank" rel="noreferrer" className="btn-primary inline-flex items-center gap-2 mt-4"><Play className="w-4 h-4" /> Voir la vidéo</a>}
+          {gp.done && gp.videoUrl && <MediaButton url={gp.videoUrl} title="Vidéo" className="btn-primary inline-flex items-center gap-2 mt-4"><Play className="w-4 h-4" /> Voir la vidéo</MediaButton>}
           {gp.done && !gp.videoUrl && <div className="text-sm text-amber-600 mt-3">Terminé — retrouve-le dans la galerie / la revue.</div>}
           {gp.failed && <div className="text-sm text-rose-600 mt-3">{gp.error || "Génération échouée. Réessaie."}</div>}
         </div>
@@ -393,9 +394,9 @@ export function Studio() {
                           <Icon className="w-8 h-8 text-white/40" />
                         )}
                         {a.video_url && (
-                          <a href={a.video_url} target="_blank" rel="noreferrer" className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/45 transition">
+                          <MediaButton url={a.video_url} title={c.title ?? p.caption ?? "Vidéo"} className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/45 transition">
                             <span className="w-11 h-11 rounded-full bg-white/90 flex items-center justify-center"><Play className="w-5 h-5 text-ink fill-ink ml-0.5" /></span>
-                          </a>
+                          </MediaButton>
                         )}
                         <span className={`absolute top-2 left-2 text-xs px-2 py-0.5 rounded-full ${b.cls}`}>{b.label}</span>
                         {!TERMINAL.includes(c.status) && (

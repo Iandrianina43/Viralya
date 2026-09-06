@@ -1,3 +1,4 @@
+import { MediaButton } from "../components/MediaViewer";
 import { ChevronDown, ChevronRight, Clapperboard, ExternalLink, RotateCcw, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -189,14 +190,14 @@ export function Tasks() {
 
                   <div className="flex items-center gap-1.5 shrink-0">
                     {t.video_url && (
-                      <a href={t.video_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-sans text-[13px] font-semibold text-accent hover:underline underline-offset-2 px-2 h-8">
+                      <MediaButton url={t.video_url} title={t.title} className="inline-flex items-center gap-1 font-sans text-[13px] font-semibold text-accent hover:underline underline-offset-2 px-2 h-8">
                         <ExternalLink className="w-3.5 h-3.5" /> Vidéo
-                      </a>
+                      </MediaButton>
                     )}
                     {!t.video_url && t.image_urls[0] && (
-                      <a href={t.image_urls[t.image_urls.length - 1]} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-sans text-[13px] font-semibold text-accent hover:underline underline-offset-2 px-2 h-8">
+                      <MediaButton url={t.image_urls[t.image_urls.length - 1]!} kind="image" title={t.title} className="inline-flex items-center gap-1 font-sans text-[13px] font-semibold text-accent hover:underline underline-offset-2 px-2 h-8">
                         <ExternalLink className="w-3.5 h-3.5" /> Image
-                      </a>
+                      </MediaButton>
                     )}
                     {t.content_type !== "job" && (
                       <Link to={studioLink} className="inline-flex items-center font-sans text-[13px] font-semibold text-ink-2 hover:text-ink px-2 h-8">Ouvrir</Link>

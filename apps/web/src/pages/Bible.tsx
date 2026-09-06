@@ -1,3 +1,4 @@
+import { MediaButton } from "../components/MediaViewer";
 import { Camera, Check, Clapperboard, ExternalLink, Images, Shirt, Sparkles, Star, Trash2, UserSquare2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -328,7 +329,7 @@ export function Bible() {
               const st = scoreTone(k.face_score);
               return (
                 <figure key={k.id} className={`card overflow-hidden ${k.validated ? "ring-2 ring-ok" : ""}`}>
-                  <a href={k.url} target="_blank" rel="noreferrer"><img src={k.url} alt={k.location_name ?? "keyframe"} className="w-full aspect-[3/4] object-cover" loading="lazy" /></a>
+                  <MediaButton url={k.url} kind="image" title={k.location_name ?? "Keyframe"} subtitle={k.outfit_name} className="block w-full"><img src={k.url} alt={k.location_name ?? "keyframe"} className="w-full aspect-[3/4] object-cover" loading="lazy" /></MediaButton>
                   <figcaption className="px-2.5 py-2 text-[12.5px]">
                     <div className="flex items-center justify-between gap-1"><b className="font-sans truncate">{k.location_name ?? "Décor"}</b>{k.validated && <Check className="w-3.5 h-3.5 text-ok" />}</div>
                     <div className="text-muted truncate">{framingLabel(k.framing)}{k.outfit_name ? ` · ${k.outfit_name}` : " · sans tenue"}</div>
@@ -428,7 +429,7 @@ export function Bible() {
               return (
                 <figure key={p.id} className="card overflow-hidden flex flex-col">
                   {url ? (
-                    <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={p.title ?? "photo"} className="w-full aspect-[3/4] object-cover" loading="lazy" /></a>
+                    <MediaButton url={url} kind="image" title={p.title ?? "Photo"} className="block w-full"><img src={url} alt={p.title ?? "photo"} className="w-full aspect-[3/4] object-cover" loading="lazy" /></MediaButton>
                   ) : (
                     <div className="w-full aspect-[3/4] bg-paper-2 flex flex-col items-center justify-center gap-2 text-muted">
                       {IN_PROGRESS.has(p.status) ? <><span className="w-5 h-5 rounded-full border-2 border-rule border-t-accent animate-spin" /><span className="text-[12px]">génération…</span></> : <Camera className="w-6 h-6" />}
