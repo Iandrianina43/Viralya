@@ -51,6 +51,14 @@ const EnvSchema = z.object({
   // Publication réelle (phase 4) : clé Ayrshare (compte Business, un profil par influenceur).
   // Sans clé, la publication est simulée (compte social interne).
   AYRSHARE_API_KEY: z.string().optional(),
+  // --- Facturation Stripe (abonnements) et budget mensuel de génération (7 sept. 2026) ---
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  // Budget des organisations sans forfait ni budget manuel : vide = illimité (mono-client), 0 = forfait obligatoire.
+  DEFAULT_MONTHLY_BUDGET_USD: z.preprocess((v) => (v === "" || v == null ? undefined : v), z.coerce.number().min(0).optional()),
+  // --- E-mails transactionnels (Resend) ---
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().default("Viralya <no-reply@viralya.app>"),
 
   RUN_WORKER_INLINE: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
   // Génération quotidienne automatique (pg_cron → plan_day). Désactivée par défaut :

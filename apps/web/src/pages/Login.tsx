@@ -9,6 +9,7 @@ export function Login() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [terms, setTerms] = useState(false);
   const [confirm, setConfirm] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -17,10 +18,11 @@ export function Login() {
     e.preventDefault();
     setErr(null);
     if (mode === "signup" && password !== confirm) { setErr("Les mots de passe ne correspondent pas."); return; }
+    if (mode === "signup" && !terms) { setErr("Accepte les conditions d'utilisation pour continuer."); return; }
     setBusy(true);
     try {
       if (mode === "login") await login(email.trim(), password);
-      else await signup(name.trim(), email.trim(), password);
+      else await signup(name.trim(), email.trim(), password, terms);
     } catch (e2) {
       setErr(e2 instanceof Error ? e2.message : String(e2));
     } finally {
@@ -69,6 +71,13 @@ export function Login() {
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input className={field} type="password" placeholder="Confirme le mot de passe" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" required minLength={8} />
               </div>
+            )}
+
+            {mode === "signup" && (
+              <label className="flex items-start gap-2 text-xs text-slate-500 pt-1">
+                <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} className="mt-0.5" />
+                <span>J'accepte les <a href="/cgu" target="_blank" rel="noreferrer" className="underline hover:text-ink">conditions d'utilisation</a> et la <a href="/confidentialite" target="_blank" rel="noreferrer" className="underline hover:text-ink">politique de confidentialité</a>.</span>
+              </label>
             )}
 
             <button type="submit" disabled={busy} className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 !mt-5">

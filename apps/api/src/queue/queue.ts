@@ -83,6 +83,8 @@ export async function failJob(job: JobRow, err: unknown): Promise<boolean> {
     await supabase.from("jobs").update({ status: "failed", locked_at: null, locked_by: null, error: message }).eq("id", job.id);
     if (job.content_item_id) {
       await supabase.from("content_items").update({ status: "failed", error: message }).eq("id", job.content_item_id);
+      // E-mail d'échec aux membres de l'organisation (jamais bloquant).
+      void import("../domain/notifications").then((m) => m.notifyContentStatus(String(job.content_item_id), "failed")).catch(() => {});
     }
   }
   return willRetry;

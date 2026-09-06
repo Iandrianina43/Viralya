@@ -5,6 +5,7 @@ import { clampDuration, clampResolution, DEFAULT_SEEDANCE_MODEL, DEFAULT_SEEDANC
 import { DEFAULT_TALK_PROVIDER, isTalkMode, isTalkProvider, type TalkMode, type TalkProvider } from "../providers/talkingAvatar";
 import { enqueue } from "../queue/queue";
 import { supabase } from "../supabase";
+import { assertBudget, orgIdOfAvatar, recordUsage } from "./billing";
 import type { VlogProduction, VlogScene } from "./director";
 import { createLocation, listLocations, type LocationScope } from "./locations";
 
@@ -89,6 +90,10 @@ export async function launchProduction(avatarId: string, production: VlogProduct
       ? estimateHybridCost(production.scenes, readHybridSettings({ talk_provider: talkProvider, talk_mode: talkMode, video_model: taskType, resolution }), { music, kind: String(opts.extraPayload?.kind ?? ""), inserts: opts.inserts === true })
       : estimateProductionCost(taskType, resolution, production.scenes.map((s) => clampDuration(Number(s.duration_sec) || 12, taskType)));
 
+  // Budget mensuel de l'organisation (7 sept. 2026) : refus 402 AVANT tout coût, inscription au registre après.
+  const orgId = await orgIdOfAvatar(avatarId);
+  if (orgId) await assertBudget(orgId, estimate.total);
+
   const title = production.title ?? "Vlog";
   const { data: item, error } = await supabase
     .from("content_items")
@@ -118,6 +123,7 @@ export async function launchProduction(avatarId: string, production: VlogProduct
   const first = format === "hybrid" ? "generate_voice" : "generate_video";
   try {
     const job = await enqueue(first, { avatar_id: avatarId, content_item_id: item.id }, { contentItemId: item.id, avatarId, label: title });
+    if (orgId) await recordUsage({ orgId, avatarId, contentItemId: item.id, kind: String(opts.extraPayload?.kind ?? "video"), estimatedUsd: estimate.total });
     return { itemId: item.id, jobId: job.id, estimate: estimate.total, format };
   } catch (err) {
     const msg = String((err as Error)?.message ?? err);

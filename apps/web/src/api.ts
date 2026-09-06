@@ -77,8 +77,19 @@ export interface Setup {
   image: { configured: boolean };
   piapi: { configured: boolean };
   elevenlabs: { configured: boolean };
+  stripe?: { configured: boolean };
+  email?: { configured: boolean };
   default_video_provider: string;
 }
+
+// Facturation et budget de génération (7 sept. 2026).
+export interface Plan { code: string; name: string; price_eur: number; budget_usd: number; avatars: number; description: string }
+export interface BillingStatus {
+  stripe_configured: boolean; plan: Plan | null; subscription_status: string | null; current_period_end: string | null;
+  budget_usd: number | null; spent_usd: number; remaining_usd: number | null; month: string; plans: Plan[];
+  billing_email: string | null; has_customer: boolean; budget_source: "plan" | "manual" | "default" | "unlimited";
+}
+export interface UsageRow { id: string; kind: string; estimated_usd: number; actual_usd: number | null; content_item_id: string | null; avatar_id: string | null; created_at: string }
 export interface Stats { avatars: number; content_total: number; content_live: number; in_progress?: number; to_review?: number; failed?: number }
 export interface PiapiBalance { configured: boolean; account_name?: string; credits?: number; balance_usd?: number }
 export interface PiapiHistoryEntry { task_id: string; created_at: string; model: string; status: string; cost_usd: number; video_url: string | null }
@@ -271,7 +282,7 @@ export interface ManagedUser { id: string; email: string; name: string; role: "a
 export const api = {
   // Auth
   login: (email: string, password: string) => req<SessionResult>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
-  signup: (name: string, email: string, password: string) => req<SessionResult>("/auth/signup", { method: "POST", body: JSON.stringify({ name, email, password }) }),
+  signup: (name: string, email: string, password: string, terms = true) => req<SessionResult>("/auth/signup", { method: "POST", body: JSON.stringify({ name, email, password, terms }) }),
   me: () => req<{ user: AuthUser; orgs: Org[] }>("/auth/me"),
   updateProfile: (name: string) => req<{ ok: boolean; user: AuthUser }>("/auth/profile", { method: "PUT", body: JSON.stringify({ name }) }),
   changePassword: (current_password: string, new_password: string) => req<{ ok: boolean }>("/auth/change-password", { method: "POST", body: JSON.stringify({ current_password, new_password }) }),
@@ -440,6 +451,16 @@ export const api = {
     req<{ text: string; seconds: number; model: string }>("/studio/clone/transcribe", { method: "POST", body: JSON.stringify({ avatar_id: avatarId, source_url: sourceUrl, language }) }),
   uploadImage: (avatarId: string, file: File) => rawUpload<{ url: string }>(`/studio/upload-image?avatar_id=${encodeURIComponent(avatarId)}`, file, file.type || "image/jpeg"),
 
+  // Facturation et budget.
+  billing: () => req<BillingStatus>("/billing"),
+  billingUsage: () => req<{ usage: UsageRow[] }>("/billing/usage"),
+  billingCheckout: (plan: string) => req<{ url: string }>("/billing/checkout", { method: "POST", body: JSON.stringify({ plan }) }),
+  billingPortal: () => req<{ url: string }>("/billing/portal", { method: "POST", body: "{}" }),
+  billingSetBudget: (monthly_budget_usd: number | null, org_id?: string) => req<{ ok: boolean }>("/billing/budget", { method: "PUT", body: JSON.stringify({ monthly_budget_usd, org_id }) }),
+  // Pilote automatique du calendrier.
+  updatePlanAuto: (avatarId: string, month: string, b: { auto_produce?: boolean; auto_lead_days?: number }) =>
+    req<{ auto: { auto_produce: boolean; auto_lead_days: number } }>(`/calendar/avatars/${avatarId}/plans/${month}`, { method: "PATCH", body: JSON.stringify(b) }),
+
   listVideoModels: () => req<VideoModelsCatalog>("/studio/video-models"),
   piapiBalance: () => req<PiapiBalance>("/studio/piapi-balance"),
   piapiHistory: () => req<PiapiHistory>("/studio/piapi-history"),
@@ -521,7 +542,7 @@ export interface PlanEntry {
   network: string; ratio_class: "value" | "proof" | "sale"; pillar: string | null; series: string | null; arc: string | null;
   title: string; brief: string; location_key: string | null; status: PlanEntryStatus; content_item_id: string | null; position: number; created_at: string;
 }
-export interface ContentPlan { id: string; avatar_id: string; month: string; status: "draft" | "active" | "archived"; brief: string | null; strategy: PlanStrategy; cost_usd: number; created_at: string; entries?: PlanEntry[] }
+export interface ContentPlan { id: string; avatar_id: string; month: string; status: "draft" | "active" | "archived"; brief: string | null; strategy: PlanStrategy; cost_usd: number; created_at: string; entries?: PlanEntry[]; auto_produce?: boolean; auto_lead_days?: number }
 
 export interface SocialProfile { id: string; avatar_id: string; network: string; handle: string; display_name: string; bio: string; link: string | null; base_followers: number; following: number; created_at: string }
 export interface PostStats { views: number; likes: number; comments: number; shares: number; saves: number; followers_gained: number }

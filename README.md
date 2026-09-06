@@ -90,6 +90,7 @@ son organisation personnelle ; un propriétaire peut ajouter des membres par ema
 | `/api/calendar` | session + organisation | calendrier éditorial mensuel : génération par le stratège (job `generate_plan`), entrées éditables, production d'une entrée (vidéo en prise unique, photo, carrousel, story) |
 | `/api/social` | session + organisation | compte social par influenceur et par réseau (profil, feed, statistiques simulées ou réelles), « publier maintenant », connexions Ayrshare, remontée des stats |
 | `/api/ugc` | session + organisation | campagnes UGC : produit + matrice (influenceurs × angles × accroches × durées × CTA) → scripts en 7 temps, production vidéo par variante avec mentions légales incrustées |
+| `/api/billing` | session + organisation | forfait et budget du mois (`GET /`), registre (`/usage`), Stripe Checkout (`/checkout`), portail (`/portal`), budget manuel admin (`PUT /budget`) ; webhook Stripe signé sur `POST /api/billing/webhook` |
 | `/api/admin` | rôle admin ou `x-admin-key` | jobs globaux, reprise manuelle, déclenchement du quotidien |
 
 L'organisation active est lue dans l'en-tête `x-org-id` (sinon la première de l'utilisateur).
@@ -167,6 +168,21 @@ docs/RECHERCHE-FORMATS.md, règles de prompt dans docs/RECHERCHE-VIDEO-V2.md §1
 - Tests à sec (LLM seulement) : `scripts/test-formats.ts <avatar_id> [explainer|ad_product|clone|all]`,
   `SINGLE_TAKE=1 DRY_RUN=1 scripts/test-hybrid-e2e.ts <avatar_id> 30 "<brief>"` ; remontage sans inserts
   d'une vidéo existante : `scripts/reassemble.ts <content_id> --no-inserts`.
+
+## Phase 5 — plateforme complète (7 sept. 2026)
+
+Détail et décisions : [docs/PLAN-PLATEFORME.md](docs/PLAN-PLATEFORME.md). Migration **0017** à appliquer.
+
+- **Abonnements Stripe** (Checkout, portail client, webhooks) et **budget mensuel de génération** par
+  organisation : chaque lancement est estimé, refusé (HTTP 402) au-delà du budget, inscrit dans
+  `usage_ledger` puis corrigé au coût réel. Paramètres › Abonnement et budget. Variables
+  `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `DEFAULT_MONTHLY_BUDGET_USD`.
+- **E-mails** (Resend) : contenu prêt à valider, échec, budget à 80 % et 100 %. `RESEND_API_KEY`, `EMAIL_FROM`.
+- **Pilote automatique** du calendrier (case dans la page Calendrier) : les entrées planifiées partent
+  J-1, 3 par passage, jamais au-delà du budget ; validation humaine conservée.
+- **Supervision** : battement de cœur du worker, `/api/health` en 503 s'il s'est tu (à brancher sur UptimeRobot).
+- **Légal** : pages `/cgu` et `/confidentialite` (modèles), acceptation à l'inscription.
+- **Sécurité** : en-têtes HTTP, webhook signé, limitation de débit sur l'auth (existant).
 
 ## Feuille de route
 

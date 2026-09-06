@@ -1,5 +1,6 @@
 import type { ContentType, Network, RatioClass } from "@viralya/shared";
 import { config } from "../../config";
+import { assertBudget, orgIdOfAvatar, recordUsage } from "../../domain/billing";
 import { logger } from "../../logger";
 import { enqueue, type JobRow } from "../../queue/queue";
 import { supabase } from "../../supabase";
@@ -78,6 +79,9 @@ export async function planDay(job: JobRow): Promise<void> {
     { type: "carousel", network: "instagram", ratio_class: "proof" },
   ];
 
+  // Budget de l'organisation : 1 vidéo + 2 hooks + 1 carrousel ≈ 12 $ (refus avant tout coût).
+  const orgId = await orgIdOfAvatar(avatarId);
+  if (orgId) await assertBudget(orgId, 12);
   for (const e of plan) {
     const { data: item, error: insErr } = await supabase
       .from("content_items")
@@ -87,5 +91,6 @@ export async function planDay(job: JobRow): Promise<void> {
     if (insErr || !item) throw new Error(`plan_day insert failed: ${insErr?.message ?? ""}`);
     await enqueue("generate_text", { avatar_id: avatarId, content_item_id: item.id }, { contentItemId: item.id, avatarId, label: theme });
   }
+  if (orgId) await recordUsage({ orgId, avatarId, kind: "daily", estimatedUsd: 12 });
   logger.info("plan_day_done", { avatarId, items: plan.length, theme });
 }

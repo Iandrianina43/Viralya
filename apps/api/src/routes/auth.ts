@@ -47,13 +47,15 @@ authRouter.post(
     if (name.length < 2) { res.status(400).json({ error: "Nom requis (2 caractères min)." }); return; }
     if (!EMAIL_RE.test(email)) { res.status(400).json({ error: "Email invalide." }); return; }
     if (password.length < 8) { res.status(400).json({ error: "Mot de passe : 8 caractères minimum." }); return; }
+    // Conditions d'utilisation et politique de confidentialité (pages /cgu et /confidentialite).
+    if (req.body?.terms !== true) { res.status(400).json({ error: "Tu dois accepter les conditions d'utilisation." }); return; }
 
     const role = (await countUsers()) === 0 ? "admin" : "user";
     const { data: created, error: createErr } = await supabase.auth.admin.createUser({
       email,
       password,
       email_confirm: true, // pas de SMTP requis
-      user_metadata: { name, role },
+      user_metadata: { name, role, terms_accepted_at: new Date().toISOString() },
     });
     if (createErr) {
       const msg = /already/i.test(createErr.message) ? "Un compte existe déjà avec cet email." : createErr.message;

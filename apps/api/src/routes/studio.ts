@@ -2,7 +2,10 @@ import express, { Router } from "express";
 import { config } from "../config";
 import { buildContextBrief } from "../context/contextBuilder";
 import { breakIntoScenes, directVlog, writeStory, VLOG_PRESETS, type VlogProduction, type VlogScene } from "../domain/director";
+import { assertBudget, recordUsage } from "../domain/billing";
 import { launchProduction, type LaunchOptions } from "../domain/production";
+import { emailConfigured } from "../providers/email";
+import { stripeConfigured } from "../providers/stripe";
 import { asyncHandler } from "../lib/asyncHandler";
 import { badRequest, notFound } from "../lib/httpError";
 import { orgAvatarIds, requireAvatar } from "../lib/scope";
@@ -269,6 +272,8 @@ studioRouter.post(
         (t) => send({ type: "token", text: t }),
       );
       send({ type: "production", production });
+      const vlogEstimate = estimateProductionCost(DEFAULT_SEEDANCE_MODEL, DEFAULT_SEEDANCE_RESOLUTION, production.scenes.map((s) => clampDuration(Number(s.duration_sec) || 12))).total;
+      await assertBudget(req.org!.id, vlogEstimate);
 
       const known = new Set(locations.map((l) => l.key));
       for (const sc of production.scenes) {
@@ -296,6 +301,7 @@ studioRouter.post(
       if (error || !item) throw new Error(`insert failed: ${error?.message ?? ""}`);
 
       await enqueue("generate_video", { avatar_id: avatarId, content_item_id: item.id }, { contentItemId: item.id, avatarId, label: production.title });
+      await recordUsage({ orgId: req.org!.id, avatarId, contentItemId: item.id, kind: "video", estimatedUsd: vlogEstimate });
       send({ type: "enqueued", content_item_id: item.id });
     } catch (err) {
       send({ type: "error", error: String((err as Error)?.message ?? err) });
@@ -315,6 +321,8 @@ studioRouter.post(
     if (!piapiConfigured()) throw badRequest("PiAPI non configuré (PIAPI_API_KEY dans .env)");
     if (!VLOG_PRESETS[preset]) throw badRequest(`preset inconnu (${Object.keys(VLOG_PRESETS).join(", ")})`);
     await requireAvatar(req.org!.id, avatarId, "id");
+    const clipEstimate = estimateProductionCost(DEFAULT_SEEDANCE_MODEL, DEFAULT_SEEDANCE_RESOLUTION, [15]).total;
+    await assertBudget(req.org!.id, clipEstimate);
     const label = VLOG_PRESETS[preset]!.label;
     const { data: item, error } = await supabase
       .from("content_items")
@@ -323,6 +331,7 @@ studioRouter.post(
       .single();
     if (error || !item) throw new Error(`generate-clip insert failed: ${error?.message ?? ""}`);
     const job = await enqueue("generate_video", { avatar_id: avatarId, content_item_id: item.id }, { contentItemId: item.id, avatarId, label });
+    await recordUsage({ orgId: req.org!.id, avatarId, contentItemId: item.id, kind: "clip", estimatedUsd: clipEstimate });
     res.status(202).json({ ok: true, job_id: job.id, content_item_id: item.id });
   }),
 );
@@ -337,6 +346,7 @@ studioRouter.post(
     if (!piapiConfigured()) throw badRequest("PiAPI non configuré (PIAPI_API_KEY dans .env)");
     const avatar = await requireAvatar<{ id: string; ref_image_url: string | null }>(req.org!.id, avatarId, "id, ref_image_url");
     if (!avatar.ref_image_url) throw badRequest("Génère d'abord le portrait de l'influenceur.");
+    await assertBudget(req.org!.id, 0.15);
 
     const { isPiapiImageModel } = await import("../providers/piapiImage");
     const model = isPiapiImageModel(req.body?.model) ? req.body.model : undefined;
@@ -359,6 +369,7 @@ studioRouter.post(
       .single();
     if (error || !item) throw new Error(`insert failed: ${error?.message ?? ""}`);
     const job = await enqueue("generate_text", { avatar_id: avatarId, content_item_id: item.id }, { contentItemId: item.id, avatarId, label: title });
+    await recordUsage({ orgId: req.org!.id, avatarId, contentItemId: item.id, kind: "photo", estimatedUsd: 0.15 });
     res.status(202).json({ ok: true, job_id: job.id, content_item_id: item.id });
   }),
 );
@@ -414,6 +425,8 @@ studioRouter.get("/setup", (_req, res) => {
     image: { configured: config.IMAGE_PROVIDER === "openai" && !!config.OPENAI_API_KEY },
     piapi: { configured: piapiConfigured() },
     elevenlabs: { configured: !!config.ELEVENLABS_API_KEY },
+    stripe: { configured: stripeConfigured() },
+    email: { configured: emailConfigured() },
     default_video_provider: "piapi",
   });
 });

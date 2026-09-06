@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { addEntry, deleteEntry, getEntry, getPlan, listPlans, produceEntry, updateEntry } from "../domain/calendar";
+import { getPlanAuto, updatePlanAuto, type PlanAuto } from "../domain/calendar";
 import { asyncHandler } from "../lib/asyncHandler";
 import { badRequest, notFound } from "../lib/httpError";
 import { requireAvatar } from "../lib/scope";
@@ -37,7 +38,19 @@ calendarRouter.get(
   asyncHandler(async (req, res) => {
     await requireAvatar(req.org!.id, String(req.params.id), "id");
     const plan = await getPlan(String(req.params.id), String(req.params.month));
-    res.json({ plan });
+    res.json({ plan: plan ? { ...plan, ...(await getPlanAuto(plan.id)) } : null });
+  }),
+);
+
+// Pilote automatique du mois : { auto_produce?: boolean, auto_lead_days?: 0-7 }.
+calendarRouter.patch(
+  "/avatars/:id/plans/:month",
+  asyncHandler(async (req, res) => {
+    await requireAvatar(req.org!.id, String(req.params.id), "id");
+    const patch: Partial<PlanAuto> = {};
+    if (typeof req.body?.auto_produce === "boolean") patch.auto_produce = req.body.auto_produce;
+    if (req.body?.auto_lead_days != null) patch.auto_lead_days = Number(req.body.auto_lead_days);
+    res.json({ auto: await updatePlanAuto(String(req.params.id), String(req.params.month), patch) });
   }),
 );
 

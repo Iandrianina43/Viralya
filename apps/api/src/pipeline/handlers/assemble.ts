@@ -1,4 +1,6 @@
+import { settleUsage } from "../../domain/billing";
 import { syncEntryFromContent } from "../../domain/calendar";
+import { notifyContentStatus } from "../../domain/notifications";
 import { syncVariantFromContent } from "../../domain/ugc";
 import { snapshotVersion } from "../../lib/versions";
 import { logger } from "../../logger";
@@ -18,6 +20,11 @@ export async function assembleJob(job: JobRow): Promise<void> {
   }
 
   await patchContentItem(id, { payload, status: "needs_review", error: null });
+
+  // Coût réel (plans Seedance + musique) → registre des dépenses ; e-mail « prêt à valider » (jamais bloquants).
+  const actual = Number(item.assets.estimated_cost_usd ?? 0) + Number(item.assets.music_cost_usd ?? 0);
+  if (actual > 0) await settleUsage(id, actual);
+  void notifyContentStatus(id, "needs_review").catch(() => {});
 
   // Chaque génération aboutie devient une version (retour arrière possible).
   try {

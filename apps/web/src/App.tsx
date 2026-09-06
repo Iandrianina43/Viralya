@@ -14,6 +14,7 @@ import { Ugc } from "./pages/Ugc";
 import { CreateAvatar } from "./pages/CreateAvatar";
 import { Dashboard } from "./pages/Dashboard";
 import { Journal } from "./pages/Journal";
+import { Legal } from "./pages/Legal";
 import { Login } from "./pages/Login";
 import { Settings } from "./pages/Settings";
 import { Studio } from "./pages/Studio";
@@ -163,6 +164,8 @@ function Shell() {
     );
   }
 
+  // Pages légales : publiques (liens depuis l'inscription et le pied de page).
+  if (location.pathname === "/cgu" || location.pathname === "/confidentialite") return <Legal page={location.pathname === "/cgu" ? "cgu" : "privacy"} />;
   if (!user) return <Login />;
   // Première connexion : le guide de démarrage s'ouvre une fois, puis reste dans le menu.
   if (!welcomeSeen() && location.pathname !== "/bienvenue") return <Navigate to="/bienvenue" replace />;

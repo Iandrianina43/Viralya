@@ -142,6 +142,16 @@ export function Calendar() {
   const entries = plan?.entries ?? [];
   const counts = entries.reduce<Record<string, number>>((a, e) => ({ ...a, [e.type]: (a[e.type] ?? 0) + 1 }), {});
 
+  // Pilote automatique du mois (7 sept. 2026) : production J-1 des entrées planifiées, dans la limite du budget.
+  const toggleAuto = async (on: boolean) => {
+    if (!id) return;
+    try {
+      await api.updatePlanAuto(id, month, { auto_produce: on });
+      await load(true);
+      toast.push("ok", on ? "Pilote automatique activé : les contenus partiront la veille, dans la limite du budget." : "Pilote automatique désactivé.");
+    } catch (e) { toast.push("warn", String((e as Error).message ?? e)); }
+  };
+
   return (
     <div>
       <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
@@ -151,6 +161,11 @@ export function Calendar() {
           <p className="text-sm text-slate-500 mt-0.5">Un mois qui raconte une histoire : piliers, séries, arcs, puis les contenus jour par jour. Chaque entrée se produit à la demande.</p>
         </div>
         <div className="flex items-center gap-2">
+          {plan && (
+            <label className="flex items-center gap-1.5 text-xs text-slate-600 mr-1" title="Les entrées planifiées partent seules la veille, dans la limite du budget du mois ; chaque résultat attend ta validation.">
+              <input type="checkbox" checked={!!plan.auto_produce} onChange={(e) => toggleAuto(e.target.checked)} /> Pilote automatique
+            </label>
+          )}
           <Link to={`/avatars/${id}/social`} className="btn-secondary text-sm">Compte social</Link>
           <button onClick={() => setShowGen((s) => !s)} className="btn-primary flex items-center gap-2"><Wand2 className="w-4 h-4" /> {plan ? "Régénérer le mois" : "Générer le mois"}</button>
         </div>

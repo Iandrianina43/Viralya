@@ -5,6 +5,7 @@ import { getMemoryBrief } from "../memory/memory";
 import { generateText } from "../providers/llm";
 import { enqueue } from "../queue/queue";
 import { supabase } from "../supabase";
+import { assertBudget, orgIdOfAvatar, recordUsage } from "./billing";
 import { listWardrobe } from "./characterBible";
 import { breakIntoScenes, writeStory } from "./director";
 import { listLocations } from "./locations";
@@ -340,6 +341,9 @@ export async function produceEntry(entryId: string, opts: ProduceEntryOptions = 
 
   // Photo / carrousel / story : pipelines existants (generate_text → image).
   const type = entry.type === "photo" ? "photo" : entry.type === "carousel" ? "carousel" : "story";
+  const estimate = type === "photo" ? 0.1 : 0.3;
+  const orgId = await orgIdOfAvatar(entry.avatar_id);
+  if (orgId) await assertBudget(orgId, estimate);
   const { data: item, error } = await supabase
     .from("content_items")
     .insert({
@@ -357,7 +361,64 @@ export async function produceEntry(entryId: string, opts: ProduceEntryOptions = 
     throw err;
   }
   await supabase.from("plan_entries").update({ status: "generating", content_item_id: item.id, updated_at: new Date().toISOString() }).eq("id", entry.id);
-  return { itemId: item.id, estimate: type === "photo" ? 0.08 : 0.3 };
+  if (orgId) await recordUsage({ orgId, avatarId: entry.avatar_id, contentItemId: item.id, kind: type, estimatedUsd: estimate });
+  return { itemId: item.id, estimate };
+}
+
+// ── Pilote automatique (7 sept. 2026) ──────────────────────────
+export interface PlanAuto { auto_produce: boolean; auto_lead_days: number }
+
+export async function getPlanAuto(planId: string): Promise<PlanAuto> {
+  const { data } = await supabase.from("content_plans").select("auto_produce, auto_lead_days").eq("id", planId).maybeSingle();
+  return { auto_produce: data?.auto_produce === true, auto_lead_days: Number(data?.auto_lead_days ?? 1) };
+}
+
+export async function updatePlanAuto(avatarId: string, month: string, patch: Partial<PlanAuto>): Promise<PlanAuto> {
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (typeof patch.auto_produce === "boolean") row.auto_produce = patch.auto_produce;
+  if (patch.auto_lead_days != null) row.auto_lead_days = Math.max(0, Math.min(7, Math.round(Number(patch.auto_lead_days))));
+  const { data, error } = await supabase.from("content_plans").update(row).eq("avatar_id", avatarId).eq("month", month).select("auto_produce, auto_lead_days").maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("plan introuvable");
+  return { auto_produce: data.auto_produce === true, auto_lead_days: Number(data.auto_lead_days ?? 1) };
+}
+
+/**
+ * Produit les entrées « planned » des plans en pilote automatique dont le jour arrive (J − auto_lead_days,
+ * jamais plus vieux qu'hier). Au plus `limit` entrées par passage (le worker passe toutes les 30 min) ;
+ * s'arrête au premier refus de budget.
+ */
+export async function produceDueEntries(limit = 3): Promise<number> {
+  const { data: plans, error } = await supabase.from("content_plans").select("id, avatar_id, auto_lead_days").eq("auto_produce", true).neq("status", "archived");
+  if (error || !plans?.length) return 0;
+  const day = (d: Date) => d.toISOString().slice(0, 10);
+  const now = Date.now();
+  let produced = 0;
+  for (const plan of plans) {
+    if (produced >= limit) break;
+    const lead = Math.max(0, Number(plan.auto_lead_days) || 1);
+    const { data: entries } = await supabase
+      .from("plan_entries")
+      .select("id, title, day")
+      .eq("plan_id", plan.id)
+      .eq("status", "planned")
+      .gte("day", day(new Date(now - 86_400_000)))
+      .lte("day", day(new Date(now + lead * 86_400_000)))
+      .order("day")
+      .limit(limit - produced);
+    for (const e of entries ?? []) {
+      try {
+        const r = await produceEntry(String(e.id), { resolution: "720p" });
+        produced++;
+        logger.info("calendar_auto_entry", { entryId: e.id, itemId: r.itemId, estimate: r.estimate });
+      } catch (err) {
+        const msg = String((err as Error)?.message ?? err);
+        logger.warn("calendar_auto_entry_failed", { entryId: e.id, err: msg.slice(0, 200) });
+        if (/budget|forfait/i.test(msg)) return produced;
+      }
+    }
+  }
+  return produced;
 }
 
 /** Recale le statut d'une entrée depuis le statut du contenu (appelé par le pipeline). */

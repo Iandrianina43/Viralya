@@ -1,6 +1,7 @@
 import { logger } from "../logger";
 import { runJob } from "../pipeline";
 import { claimJobs, completeJob, failJob, heartbeat, markCanceled, reapStaleJobs, type JobRow } from "./queue";
+import { schedulerTick } from "./scheduler";
 
 const WORKER_ID = `worker-${process.pid}`;
 const POLL_MS = 2_000;
@@ -20,10 +21,18 @@ export function stopWorker(): void {
   running = false;
 }
 
+const TICK_MS = 60_000;
+
 async function loop(): Promise<void> {
   let lastReap = 0;
+  let lastTick = 0;
   while (running) {
     try {
+      // Tâches périodiques : battement de cœur (supervision) et pilote automatique du calendrier.
+      if (Date.now() - lastTick > TICK_MS) {
+        lastTick = Date.now();
+        await schedulerTick(WORKER_ID).catch((err) => logger.warn("scheduler_tick_failed", { err: String((err as Error)?.message ?? err) }));
+      }
       // Reprise des jobs orphelins (worker précédent mort en plein rendu).
       if (Date.now() - lastReap > REAP_EVERY_MS) {
         lastReap = Date.now();

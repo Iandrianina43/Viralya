@@ -1,6 +1,6 @@
 import { Ban, Check, CheckCircle2, Loader2, Shield, ShieldOff, Trash2, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api, type ManagedUser, type Setup } from "../api";
+import { api, type BillingStatus, type ManagedUser, type Setup } from "../api";
 import { useAuth } from "../auth";
 import { ConfirmModal } from "../components/Modal";
 
@@ -39,6 +39,35 @@ export function Settings() {
   const [adminErr, setAdminErr] = useState<string | null>(null);
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState<ManagedUser | null>(null);
+
+  // Abonnement et budget de génération (7 sept. 2026).
+  const [billing, setBilling] = useState<BillingStatus | null>(null);
+  const [billingBusy, setBillingBusy] = useState(false);
+  const [billingMsg, setBillingMsg] = useState<string | null>(null);
+  const [budgetInput, setBudgetInput] = useState("");
+  const loadBilling = () =>
+    api.billing().then((b) => { setBilling(b); setBudgetInput(b.budget_source === "manual" && b.budget_usd != null ? String(b.budget_usd) : ""); }).catch((e) => setBillingMsg(String(e.message ?? e)));
+  useEffect(() => {
+    loadBilling();
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("billing") === "success") setBillingMsg("Abonnement enregistré ✓ — la mise à jour prend quelques secondes.");
+    if (q.get("billing") === "cancel") setBillingMsg("Paiement annulé.");
+  }, []);
+  const checkout = async (plan: string) => {
+    setBillingBusy(true); setBillingMsg(null);
+    try { const r = await api.billingCheckout(plan); window.location.href = r.url; }
+    catch (e) { setBillingMsg(String((e as Error).message ?? e)); setBillingBusy(false); }
+  };
+  const portal = async () => {
+    setBillingBusy(true); setBillingMsg(null);
+    try { const r = await api.billingPortal(); window.location.href = r.url; }
+    catch (e) { setBillingMsg(String((e as Error).message ?? e)); setBillingBusy(false); }
+  };
+  const saveBudget = async () => {
+    setBillingBusy(true); setBillingMsg(null);
+    try { await api.billingSetBudget(budgetInput.trim() === "" ? null : Number(budgetInput)); await loadBilling(); setBillingMsg("Budget enregistré ✓"); }
+    catch (e) { setBillingMsg(String((e as Error).message ?? e)); } finally { setBillingBusy(false); }
+  };
 
   const loadAdmin = () => {
     if (!isAdmin) return;
@@ -90,6 +119,8 @@ export function Settings() {
         { label: "Images (OpenAI)", ok: setup.image.configured },
         { label: "Vidéo Seedance 2.0 (PiAPI)", ok: setup.piapi.configured },
         { label: "Voix (ElevenLabs)", ok: setup.elevenlabs.configured },
+        { label: "Paiement (Stripe)", ok: !!setup.stripe?.configured },
+        { label: "E-mails (Resend)", ok: !!setup.email?.configured },
       ]
     : [];
 
@@ -139,6 +170,57 @@ export function Settings() {
             </button>
             {pwMsg && <span className={`text-sm ${pwMsg.ok ? "text-green-600" : "text-red-600"}`}>{pwMsg.text}</span>}
           </div>
+        </Section>
+
+        {/* Abonnement et budget de génération */}
+        <Section title="Abonnement et budget" subtitle="Ce que Viralya dépense en IA pour cet espace ce mois-ci, et ton forfait.">
+          {billing ? (
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between text-sm mb-1 gap-3">
+                  <span className="text-slate-600">
+                    {billing.plan ? `Forfait ${billing.plan.name}` : billing.budget_source === "manual" ? "Budget fixé par l'administrateur" : billing.budget_usd == null ? "Sans limite (espace interne)" : "Sans forfait"}
+                    {billing.subscription_status && billing.subscription_status !== "active" ? ` · ${billing.subscription_status}` : ""}
+                  </span>
+                  <span className="font-semibold text-ink whitespace-nowrap">{billing.spent_usd.toFixed(2)} $ {billing.budget_usd != null ? `/ ${billing.budget_usd.toFixed(0)} $` : ""} <span className="text-xs font-normal text-slate-400">ce mois</span></span>
+                </div>
+                {billing.budget_usd != null && billing.budget_usd > 0 && (
+                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div className={`h-full ${billing.spent_usd / billing.budget_usd > 0.8 ? "bg-rose-500" : "bg-accent"}`} style={{ width: `${Math.min(100, (billing.spent_usd / billing.budget_usd) * 100)}%` }} />
+                  </div>
+                )}
+                {billing.current_period_end && <div className="text-xs text-slate-400 mt-1">Renouvellement le {new Date(billing.current_period_end).toLocaleDateString("fr-FR")}</div>}
+              </div>
+              <div className="grid sm:grid-cols-3 gap-2">
+                {billing.plans.map((p) => (
+                  <div key={p.code} className={`rounded-xl border p-3 ${billing.plan?.code === p.code ? "border-accent bg-accent/5" : "border-slate-200"}`}>
+                    <div className="flex items-baseline justify-between gap-2"><span className="font-semibold text-ink">{p.name}</span><span className="text-sm text-slate-600">{p.price_eur} €/mois</span></div>
+                    <div className="text-xs text-slate-500 mt-1">{p.description}</div>
+                    <div className="text-xs text-slate-400 mt-1">Budget IA : {p.budget_usd} $ par mois</div>
+                    {billing.plan?.code !== p.code && (
+                      <button onClick={() => checkout(p.code)} disabled={!billing.stripe_configured || billingBusy}
+                        title={billing.stripe_configured ? "" : "Paiement indisponible : Stripe n'est pas configuré sur ce serveur"}
+                        className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-ink text-white disabled:opacity-40">Choisir</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {billing.has_customer && (
+                  <button onClick={portal} disabled={billingBusy} className="text-sm px-3.5 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50">Gérer mon abonnement (factures, carte, résiliation)</button>
+                )}
+                {!billing.stripe_configured && <span className="text-xs text-slate-400">Paiement en ligne non activé sur ce serveur.</span>}
+                {billingMsg && <span className="text-sm text-slate-600">{billingMsg}</span>}
+              </div>
+              {isAdmin && (
+                <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100">
+                  <span className="text-xs text-slate-500">Budget manuel de cet espace ($ par mois, vide = règle du forfait)</span>
+                  <input className="w-28 border border-slate-200 rounded-lg px-2 py-1 text-sm" value={budgetInput} onChange={(e) => setBudgetInput(e.target.value)} placeholder="ex. 100" />
+                  <button onClick={saveBudget} disabled={billingBusy} className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">Enregistrer</button>
+                </div>
+              )}
+            </div>
+          ) : <div className="text-sm text-slate-400">{billingMsg ?? "Chargement…"}</div>}
         </Section>
 
         {/* Admin : utilisateurs */}
