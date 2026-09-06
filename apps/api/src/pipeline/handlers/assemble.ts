@@ -1,3 +1,7 @@
+import { syncEntryFromContent } from "../../domain/calendar";
+import { syncVariantFromContent } from "../../domain/ugc";
+import { snapshotVersion } from "../../lib/versions";
+import { logger } from "../../logger";
 import type { JobRow } from "../../queue/queue";
 import { loadContentItem, patchContentItem, requireContentItemId } from "../pipelines";
 
@@ -14,4 +18,16 @@ export async function assembleJob(job: JobRow): Promise<void> {
   }
 
   await patchContentItem(id, { payload, status: "needs_review", error: null });
+
+  // Chaque génération aboutie devient une version (retour arrière possible).
+  try {
+    await snapshotVersion(id, "Génération terminée");
+  } catch (err) {
+    logger.warn("version_snapshot_failed", { itemId: id, err: String((err as Error)?.message ?? err) });
+  }
+  // Calendrier et campagnes UGC suivent le statut du contenu (jamais bloquant).
+  await Promise.all([
+    syncEntryFromContent(id, "needs_review").catch(() => {}),
+    syncVariantFromContent(id, "needs_review").catch(() => {}),
+  ]);
 }

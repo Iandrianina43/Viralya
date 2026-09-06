@@ -1,6 +1,7 @@
+import { Loader2, Mic, RefreshCw, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api, type Avatar, type AvatarInfo, type ElevenVoice, type VideoProviderName, type VoiceInfo } from "../api";
+import { api, type Avatar, type ElevenVoice } from "../api";
 import { AvatarPhoto } from "../components/AvatarPhoto";
 
 const NETWORKS = ["instagram", "tiktok", "youtube", "x", "facebook"];
@@ -23,27 +24,37 @@ export function AvatarEditor() {
   const [form, setForm] = useState<Partial<Avatar>>({
     name: "", niche: "", sex_age: "", city: "", timezone: "Europe/Paris",
     status: "draft", is_ai_disclosed: true, priority_networks: ["instagram", "tiktok"],
-    products: [], video_provider: "heygen", video_avatar_id: null, voice_id: null, ref_image_url: null,
+    products: [], video_provider: "piapi", ref_image_url: null,
   });
-  const [voices, setVoices] = useState<VoiceInfo[]>([]);
-  const [mediaAvatars, setMediaAvatars] = useState<AvatarInfo[]>([]);
   const [elevenVoices, setElevenVoices] = useState<ElevenVoice[]>([]);
   const [preview, setPreview] = useState<HTMLAudioElement | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [sheetBusy, setSheetBusy] = useState(false);
+  const [samplesBusy, setSamplesBusy] = useState(false);
 
   useEffect(() => {
     if (id) api.getAvatar(id).then((r) => setForm(r.avatar)).catch((e) => setErr(String(e)));
     api.listElevenVoices().then((r) => setElevenVoices(r.voices)).catch(() => setElevenVoices([]));
   }, [id]);
 
-  const provider = form.video_provider ?? "heygen";
-  const isTalkingHead = provider === "heygen" || provider === "argil";
-  useEffect(() => {
-    if (!isTalkingHead) { setVoices([]); setMediaAvatars([]); return; }
-    api.listVoices(provider).then((r) => setVoices(r.voices)).catch(() => setVoices([]));
-    api.listMediaAvatars(provider).then((r) => setMediaAvatars(r.avatars)).catch(() => setMediaAvatars([]));
-  }, [provider, isTalkingHead]);
+  // Références Seedance : planche d'identité 8 vues + échantillons de timbre.
+  const genSheet = async () => {
+    if (!id) return;
+    setSheetBusy(true); setErr(null);
+    try {
+      const r = await api.generateCharacterSheet(id);
+      setForm((f) => ({ ...f, character_sheet_url: r.character_sheet_url }));
+    } catch (e) { setErr(String(e)); } finally { setSheetBusy(false); }
+  };
+  const genSamples = async () => {
+    if (!id) return;
+    setSamplesBusy(true); setErr(null);
+    try {
+      const r = await api.generateVoiceSamples(id);
+      setForm((f) => ({ ...f, voice_sample_urls: r.voice_sample_urls }));
+    } catch (e) { setErr(String(e)); } finally { setSamplesBusy(false); }
+  };
 
   // Écoute d'un extrait de la voix ElevenLabs sélectionnée.
   const playPreview = () => {
@@ -85,7 +96,7 @@ export function AvatarEditor() {
           </div>
           <div className="flex flex-wrap gap-1.5 mt-3">
             <span className={`text-xs px-2 py-0.5 rounded-full ${form.status === "active" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>{form.status}</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">{provider}</span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Seedance 2.0</span>
             {form.is_ai_disclosed && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">IA déclarée</span>}
           </div>
           {form.eleven_voice_name && <div className="text-xs text-slate-400 mt-3">🎙️ {form.eleven_voice_name}</div>}
@@ -162,41 +173,58 @@ export function AvatarEditor() {
               </div>
             </label>
 
-            <label className="block"><span className="text-sm text-slate-600">Moteur vidéo</span>
-              <select className={field} value={provider} onChange={(e) => set("video_provider", e.target.value as VideoProviderName)}>
-                <option value="higgsfield">Higgsfield (vlog cinématique) ⭐ recommandé</option>
-                <option value="heygen">HeyGen (talking-head)</option>
-                <option value="argil">Argil (talking-head)</option>
-                <option value="stub">Stub (test)</option>
-              </select>
-              {provider === "higgsfield" && (
-                <p className="text-xs text-slate-400 mt-1.5">Rien d'autre à configurer : l'identité vient du portrait, la voix d'ElevenLabs. ✓</p>
-              )}
-            </label>
-
-            {/* Champs spécifiques talking-head — uniquement si HeyGen/Argil est choisi. */}
-            {isTalkingHead && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3.5 space-y-3">
-                <p className="text-xs text-amber-700">Réglages propres au moteur talking-head {provider} (indépendants de la voix ElevenLabs ci-dessus).</p>
-                <label className="block"><span className="text-sm text-slate-600">Voix native {provider}</span>
-                  {voices.length > 0 ? (
-                    <select className={field} value={form.voice_id ?? ""} onChange={(e) => set("voice_id", e.target.value || null)}>
-                      <option value="">— auto —</option>
-                      {voices.map((v) => <option key={v.voice_id} value={v.voice_id}>{v.name}{v.category ? ` (${v.category})` : ""}</option>)}
-                    </select>
-                  ) : <input className={field} placeholder="voice_id du moteur" value={form.voice_id ?? ""} onChange={(e) => set("voice_id", e.target.value || null)} />}
-                </label>
-                <label className="block"><span className="text-sm text-slate-600">Avatar / visage {provider} (requis pour ce moteur)</span>
-                  {mediaAvatars.length > 0 ? (
-                    <select className={field} value={form.video_avatar_id ?? ""} onChange={(e) => set("video_avatar_id", e.target.value || null)}>
-                      <option value="">— aucun —</option>
-                      {mediaAvatars.map((a) => <option key={a.avatar_id} value={a.avatar_id}>{a.name}</option>)}
-                    </select>
-                  ) : <input className={field} placeholder="avatar_id du moteur (studio HeyGen/Argil)" value={form.video_avatar_id ?? ""} onChange={(e) => set("video_avatar_id", e.target.value || null)} />}
-                </label>
+            {/* Échantillons de timbre : les 2 mp3 passés à Seedance (@audio1/@audio2). */}
+            {editing && (
+              <div className="rounded-xl border border-slate-200 p-3.5">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="text-sm text-slate-600 flex items-center gap-2">
+                    <Mic className="w-4 h-4 text-slate-400" />
+                    Échantillons de timbre ({(form.voice_sample_urls ?? []).length}/2)
+                    <span className="text-xs text-slate-400">— donnent sa voix aux vidéos Seedance</span>
+                  </div>
+                  <button type="button" onClick={genSamples} disabled={samplesBusy || !form.eleven_voice_id}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 disabled:opacity-40">
+                    {samplesBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                    {(form.voice_sample_urls ?? []).length ? "Régénérer" : "Générer"}
+                  </button>
+                </div>
+                {(form.voice_sample_urls ?? []).length > 0 && (
+                  <div className="grid sm:grid-cols-2 gap-2 mt-2.5">
+                    {(form.voice_sample_urls ?? []).map((u, i) => (
+                      <audio key={u} controls preload="none" src={u} className="w-full h-9" title={`Échantillon ${i + 1}`} />
+                    ))}
+                  </div>
+                )}
+                {!form.eleven_voice_id && <p className="text-xs text-amber-600 mt-2">Choisis d'abord sa voix ci-dessus, puis enregistre.</p>}
               </div>
             )}
           </Section>
+
+          {/* Références d'identité Seedance : portrait + planche 8 vues. */}
+          {editing && (
+            <Section title="Identité visuelle (références Seedance)">
+              <div className="rounded-xl border border-slate-200 p-3.5">
+                <div className="flex items-center justify-between gap-3 flex-wrap mb-2.5">
+                  <div className="text-sm text-slate-600">
+                    Character sheet (planche 8 vues)
+                    <span className="text-xs text-slate-400 block">Verrouille son identité sous tous les angles dans les vidéos.</span>
+                  </div>
+                  <button type="button" onClick={genSheet} disabled={sheetBusy || !form.ref_image_url}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 disabled:opacity-40">
+                    {sheetBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    {form.character_sheet_url ? "Régénérer" : "Générer la planche"}
+                  </button>
+                </div>
+                {form.character_sheet_url ? (
+                  <a href={form.character_sheet_url} target="_blank" rel="noreferrer">
+                    <img src={form.character_sheet_url} alt="character sheet" className="w-full rounded-lg border border-slate-100" />
+                  </a>
+                ) : (
+                  <p className="text-xs text-slate-400">{form.ref_image_url ? "Pas encore de planche — génère-la (1 image, ~30 s)." : "Génère d'abord son portrait."}</p>
+                )}
+              </div>
+            </Section>
+          )}
 
           {form.system_prompt && (
             <Section title="Prompt système généré">

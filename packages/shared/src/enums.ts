@@ -3,7 +3,7 @@
 export const NETWORKS = ["instagram", "tiktok", "youtube", "x", "facebook"] as const;
 export type Network = (typeof NETWORKS)[number];
 
-export const CONTENT_TYPES = ["video", "hook", "carousel", "story", "tweet"] as const;
+export const CONTENT_TYPES = ["video", "hook", "carousel", "story", "tweet", "photo"] as const;
 export type ContentType = (typeof CONTENT_TYPES)[number];
 
 export const CONTENT_STATUS = [
@@ -13,8 +13,13 @@ export const CONTENT_STATUS = [
   "scheduled",
   "published",
   "failed",
+  "canceled",
 ] as const;
 export type ContentStatus = (typeof CONTENT_STATUS)[number];
+
+/** États affichés dans le Task Center (regroupement des statuts internes). */
+export const TASK_STATES = ["running", "upcoming", "review", "done", "failed"] as const;
+export type TaskState = (typeof TASK_STATES)[number];
 
 /** Règle 70/20/10 (M3). */
 export const RATIO_CLASS = ["value", "proof", "sale"] as const;
@@ -27,12 +32,26 @@ export const JOB_TYPES = [
   "generate_text",
   "generate_video",
   "poll_video",
+  // Vidéo v2 hybride : voix ElevenLabs → plans (avatar parlant / b-roll) → suivi + montage.
+  "generate_voice",
+  "generate_shots",
+  "poll_shots",
   "generate_image",
+  "generate_photo",
   "assemble",
   "schedule",
   "publish",
+  // Phase 3 : calendrier mensuel (stratège LLM) et remontée des statistiques réelles.
+  "generate_plan",
+  "sync_stats",
 ] as const;
 export type JobType = (typeof JOB_TYPES)[number];
+
+/** Calendrier éditorial (phase 3). */
+export const PLAN_ENTRY_TYPES = ["video", "photo", "carousel", "story", "ugc"] as const;
+export type PlanEntryType = (typeof PLAN_ENTRY_TYPES)[number];
+export const PLAN_ENTRY_STATUS = ["planned", "generating", "ready", "scheduled", "published", "skipped", "failed"] as const;
+export type PlanEntryStatus = (typeof PLAN_ENTRY_STATUS)[number];
 
 export const JOB_STATUS = ["pending", "running", "done", "failed", "canceled"] as const;
 export type JobStatus = (typeof JOB_STATUS)[number];
@@ -41,6 +60,6 @@ export type JobStatus = (typeof JOB_STATUS)[number];
 export const MEMORY_KIND = ["fact", "storyline", "life_event", "content_ref"] as const;
 export type MemoryKind = (typeof MEMORY_KIND)[number];
 
-/** Moteurs vidéo supportés (swappables) : talking-head (heygen/argil) + cinématique (higgsfield). */
-export const VIDEO_PROVIDERS = ["heygen", "argil", "higgsfield", "stub"] as const;
+/** Moteur vidéo : Seedance 2.0 via PiAPI (stub pour les environnements sans clé). */
+export const VIDEO_PROVIDERS = ["piapi", "stub"] as const;
 export type VideoProviderName = (typeof VIDEO_PROVIDERS)[number];

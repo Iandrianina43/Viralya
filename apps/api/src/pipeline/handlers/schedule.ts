@@ -1,5 +1,5 @@
 import { logger } from "../../logger";
-import type { JobRow } from "../../queue/queue";
+import { enqueue, type JobRow } from "../../queue/queue";
 import { supabase } from "../../supabase";
 import { loadContentItem, patchContentItem, requireContentItemId } from "../pipelines";
 
@@ -29,5 +29,9 @@ export async function scheduleJob(job: JobRow): Promise<void> {
 
   const scheduledAt = String(job.payload.scheduled_at ?? new Date(Date.now() + 3600 * 1000).toISOString());
   await patchContentItem(id, { status: "scheduled", scheduled_at: scheduledAt, error: null });
+  await supabase.from("plan_entries").update({ status: "scheduled", updated_at: new Date().toISOString() }).eq("content_item_id", id);
+  // Publication (simulée ou réelle) à l'heure prévue — la file maison porte le délai.
+  const delay = Math.max(0, Date.parse(scheduledAt) - Date.now());
+  await enqueue("publish", { content_item_id: id, avatar_id: item.avatar_id }, { contentItemId: id, runAfterMs: delay, avatarId: item.avatar_id, label: item.title ?? "Publication" });
   logger.info("content_scheduled", { itemId: id, network: item.network, scheduledAt });
 }

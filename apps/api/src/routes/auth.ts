@@ -9,6 +9,7 @@ import {
   supabaseAuth,
   userFromToken,
 } from "../auth/auth";
+import { ensurePersonalOrg, listUserOrgs } from "../auth/org";
 import { config } from "../config";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logger } from "../logger";
@@ -48,7 +49,7 @@ authRouter.post(
     if (password.length < 8) { res.status(400).json({ error: "Mot de passe : 8 caractères minimum." }); return; }
 
     const role = (await countUsers()) === 0 ? "admin" : "user";
-    const { error: createErr } = await supabase.auth.admin.createUser({
+    const { data: created, error: createErr } = await supabase.auth.admin.createUser({
       email,
       password,
       email_confirm: true, // pas de SMTP requis
@@ -58,6 +59,12 @@ authRouter.post(
       const msg = /already/i.test(createErr.message) ? "Un compte existe déjà avec cet email." : createErr.message;
       res.status(400).json({ error: msg });
       return;
+    }
+    // Chaque nouveau compte reçoit son espace (organisation) personnel.
+    if (created?.user) {
+      await ensurePersonalOrg({ id: created.user.id, name, email }).catch((err) =>
+        logger.warn("personal_org_failed", { email, err: String((err as Error)?.message ?? err) }),
+      );
     }
 
     const { data, error } = await supabaseAuth.auth.signInWithPassword({ email, password });
@@ -89,7 +96,9 @@ authRouter.get(
   "/me",
   authRequired,
   asyncHandler(async (req, res) => {
-    res.json({ user: req.user });
+    let orgs = await listUserOrgs(req.user!.id);
+    if (orgs.length === 0) orgs = [await ensurePersonalOrg(req.user!)];
+    res.json({ user: req.user, orgs });
   }),
 );
 

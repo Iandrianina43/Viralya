@@ -25,7 +25,7 @@ const TYPE_ICON: Record<string, typeof Video> = {
   video: Video, hook: Sparkles, carousel: ImageIcon, story: ImageIcon, tweet: Sparkles,
 };
 
-const GEN_STEPS = ["Préparation", "Scène (Soul)", "Animation vidéo", "Prêt"];
+const GEN_STEPS = ["Préparation", "Segments Seedance", "Assemblage", "Prêt"];
 const TERMINAL = ["needs_review", "failed", "scheduled", "published", "rejected", "live", "done"];
 
 interface GenProgress {
@@ -33,21 +33,23 @@ interface GenProgress {
   keyframe: string | null; videoUrl: string | null; error: string | null;
 }
 
-// Dérive une progression réelle depuis le statut/phase du content_item en cours.
+// Dérive une progression réelle depuis les segments Seedance du content_item en cours.
 function computeGen(item: ContentItem | null, startedAt: number, now: number): GenProgress {
   const assets = (item?.assets ?? {}) as Record<string, unknown>;
   const status = item?.status;
-  const keyframe = (assets.keyframe_url as string) || (assets.image_url as string) || null;
+  const keyframe = (assets.image_url as string) || null;
   if (status === "failed") return { pct: 100, stepIdx: 3, label: "Échec de la génération", done: false, failed: true, keyframe, videoUrl: null, error: (item?.error as string) || null };
   if (status === "needs_review") return { pct: 100, stepIdx: 3, label: "Prêt à valider ✓", done: true, failed: false, keyframe, videoUrl: (assets.video_url as string) || null, error: null };
   const el = Math.max(0, (now - startedAt) / 1000);
-  const phase = assets.hf_phase as string | undefined;
-  if (!phase) return { pct: Math.min(15, 6 + el * 0.8), stepIdx: 0, label: "Préparation…", done: false, failed: false, keyframe, videoUrl: null, error: null };
-  if (phase === "soul") return { pct: Math.min(45, 20 + el * 0.5), stepIdx: 1, label: "Création de la scène (Soul)…", done: false, failed: false, keyframe, videoUrl: null, error: null };
-  return { pct: Math.min(94, 52 + el * 0.22), stepIdx: 2, label: "Animation cinématique…", done: false, failed: false, keyframe, videoUrl: null, error: null };
+  const segments = (assets.segments as Array<{ phase: string }> | undefined) ?? [];
+  if (!segments.length) return { pct: Math.min(15, 6 + el * 0.8), stepIdx: 0, label: "Préparation…", done: false, failed: false, keyframe, videoUrl: null, error: null };
+  const doneCount = segments.filter((s) => s.phase === "done").length;
+  if (assets.assembling) return { pct: 94, stepIdx: 2, label: "Assemblage final…", done: false, failed: false, keyframe, videoUrl: null, error: null };
+  const base = 18 + (doneCount / segments.length) * 72;
+  return { pct: Math.min(92, base + el * 0.05), stepIdx: 1, label: `Tournage plan-séquence (${doneCount}/${segments.length} segments)…`, done: false, failed: false, keyframe, videoUrl: null, error: null };
 }
 
-// Presets de vlog cinématique (Higgsfield). Actifs dès que le moteur est branché.
+// Presets de vlog (ambiances du réalisateur IA — moteur Seedance 2.0).
 const VLOG_PRESETS = [
   { key: "grwm", label: "Get Ready With Me", icon: Sunrise, hint: "Elle se prépare, lumière du matin" },
   { key: "coffee", label: "Prends un café avec moi", icon: Coffee, hint: "Terrasse, ambiance cosy" },
@@ -71,6 +73,15 @@ export function Studio() {
   const [prod, setProd] = useState<{ presetLabel: string; story: string; streaming: boolean; stepLabel: string; production: VlogProduction | null } | null>(null);
   const [historyItem, setHistoryItem] = useState<ContentItem | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
+  // Prix du clip rapide (preset = 1 segment de 15 s au modèle/résolution par défaut).
+  const [quickClipCost, setQuickClipCost] = useState<number | null>(null);
+  useEffect(() => {
+    api.listVideoModels().then((r) => {
+      const m = r.models.find((x) => x.id === r.default);
+      const unit = m?.price_per_sec?.[r.default_resolution];
+      setQuickClipCost(unit != null ? Math.round(unit * r.duration.default * 100) / 100 : null);
+    }).catch(() => setQuickClipCost(null));
+  }, []);
 
   const load = () => {
     if (!id) return;
@@ -175,12 +186,18 @@ export function Studio() {
           hint: avatar.eleven_voice_name ? `${avatar.eleven_voice_name} — utilisée dans les vlogs.` : "Choisis une voix ElevenLabs dans l'éditeur.",
         },
         {
-          ok: avatar.video_provider === "higgsfield" || !!avatar.video_avatar_id,
-          label: "Moteur vidéo prêt",
-          hint:
-            avatar.video_provider === "higgsfield"
-              ? "Higgsfield — rien à configurer."
-              : `Moteur « ${avatar.video_provider} » : il faut un avatar_id de leur studio. Passe sur Higgsfield dans l'éditeur (recommandé).`,
+          ok: !!avatar.character_sheet_url,
+          label: "Planche d'identité",
+          hint: avatar.character_sheet_url
+            ? "Character sheet 8 vues — l'identité tient sous tous les angles."
+            : "Génère sa planche 8 vues dans l'éditeur (référence Seedance).",
+        },
+        {
+          ok: (avatar.voice_sample_urls ?? []).length > 0,
+          label: "Timbre de voix",
+          hint: (avatar.voice_sample_urls ?? []).length
+            ? "Échantillons prêts — Seedance parle avec sa voix."
+            : "Génère ses échantillons de timbre dans l'éditeur.",
         },
       ]
     : [];
@@ -214,7 +231,7 @@ export function Studio() {
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1.5">
               <span className={`text-xs px-2 py-0.5 rounded-full ${avatar.status === "active" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>● {avatar.status}</span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">{avatar.video_provider}</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Seedance 2.0</span>
               {avatar.is_ai_disclosed && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">IA déclarée</span>}
             </div>
             <div className="text-2xl font-bold text-ink truncate">{avatar.name}</div>
@@ -253,14 +270,16 @@ export function Studio() {
             try { await api.cancelContent(activeGen.id); await load(); setMsg("Production annulée."); }
             catch (e) { setErr(String(e)); }
           } : undefined}
-          onApproveImages={activeGen ? async () => {
-            try { await api.approveImages(activeGen.id); const { item } = await api.getContent(activeGen.id); setGenItem(item); }
-            catch (e) { setErr(String(e)); }
-          } : undefined}
-          onRegenerateImage={activeGen ? async (idx) => {
-            try { await api.regenerateSceneImage(activeGen.id, idx); const { item } = await api.getContent(activeGen.id); setGenItem(item); }
-            catch (e) { setErr(String(e)); }
-          } : undefined}
+          onRegenerateShot={async (idx, texte) => {
+            const cid = genItem?.id ?? activeGen?.id;
+            if (!cid) return;
+            setErr(null); setMsg(null);
+            try {
+              await api.regenerateShot(cid, idx, texte ? { texte } : {});
+              setActiveGen({ id: cid, label: prod.presetLabel, startedAt: Date.now() });
+              setMsg(`Plan ${idx + 1} relancé — la vidéo sera remontée à la fin.`);
+            } catch (e) { setErr(String(e)); }
+          }}
           onClose={() => { setProd(null); setActiveGen(null); setGenItem(null); }}
         />
       )}
@@ -335,7 +354,7 @@ export function Studio() {
                     <div className="w-8 h-8 rounded-lg bg-accent/10 text-accent flex items-center justify-center shrink-0"><Icon className="w-3.5 h-3.5" /></div>
                     <div className="min-w-0">
                       <div className="text-xs font-medium text-ink truncate">{p.label}</div>
-                      <div className="text-[10px] text-slate-400 truncate">{on ? "Lancement…" : "sans validation"}</div>
+                      <div className="text-[10px] text-slate-400 truncate">{on ? "Lancement…" : quickClipCost != null ? `≈ ${quickClipCost.toFixed(2)} $ · sans validation` : "sans validation"}</div>
                     </div>
                   </button>
                 );
@@ -443,7 +462,7 @@ export function Studio() {
             <h3 className="font-semibold text-ink mb-3">Fiche</h3>
             <div className="space-y-2 text-sm">
               <div className="flex items-center gap-2 text-slate-600"><Mic className="w-3.5 h-3.5 text-slate-400" /> {avatar.eleven_voice_name || "Aucune voix"}</div>
-              <div className="flex items-center gap-2 text-slate-600"><Video className="w-3.5 h-3.5 text-slate-400" /> Moteur : {avatar.video_provider}</div>
+              <div className="flex items-center gap-2 text-slate-600"><Video className="w-3.5 h-3.5 text-slate-400" /> Moteur : Seedance 2.0 (PiAPI)</div>
               <div className="flex items-center gap-2 text-slate-600"><Clapperboard className="w-3.5 h-3.5 text-slate-400" /> {avatar.timezone}</div>
             </div>
           </div>
@@ -480,6 +499,19 @@ export function Studio() {
             stepLabel=""
             production={(historyItem.payload as { production?: VlogProduction }).production ?? null}
             item={historyItem}
+            onRegenerateShot={async (idx, texte) => {
+              const it = historyItem;
+              const production = (it.payload as { production?: VlogProduction }).production ?? null;
+              const label = String((it.payload as { theme?: string }).theme ?? it.title ?? "Vidéo");
+              setErr(null); setMsg(null);
+              try {
+                await api.regenerateShot(it.id, idx, texte ? { texte } : {});
+                setHistoryItem(null);
+                setGenItem(it);
+                setProd({ presetLabel: label, story: production?.story ?? "", streaming: false, stepLabel: `Régénération du plan ${idx + 1}…`, production });
+                setActiveGen({ id: it.id, label, startedAt: Date.now() });
+              } catch (e) { setErr(String(e)); }
+            }}
           />
         )}
       </Modal>

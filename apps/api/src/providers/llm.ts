@@ -2,16 +2,27 @@ import { config } from "../config";
 import { logger } from "../logger";
 
 // Provider IA texte — Anthropic (Claude) ou OpenAI (GPT). Stub si pas de clé.
-export async function generateText(system: string, user: string, maxTokens = 900): Promise<string> {
+export type LlmEffort = "low" | "medium" | "high";
+export interface GenerateOptions {
+  /**
+   * Profondeur de réflexion (Claude : `output_config.effort`). Le thinking adaptatif est actif par
+   * défaut et ses jetons comptent dans `max_tokens` : pour les grosses sorties JSON (calendrier du
+   * mois, scripts UGC), `low` évite que la réflexion consomme tout le budget avant le texte
+   * (incident du 6 sept. 2026 : réponse vide après 2 min sur 12 000 jetons).
+   */
+  effort?: LlmEffort;
+}
+
+export async function generateText(system: string, user: string, maxTokens = 900, opts: GenerateOptions = {}): Promise<string> {
   if (config.LLM_PROVIDER === "anthropic") {
     if (!config.ANTHROPIC_API_KEY) return stub();
-    return callAnthropic(system, user, maxTokens);
+    return callAnthropic(system, user, maxTokens, opts);
   }
   if (!config.OPENAI_API_KEY) return stub();
   return callOpenAI(system, user, maxTokens);
 }
 
-async function callAnthropic(system: string, user: string, maxTokens: number): Promise<string> {
+async function callAnthropic(system: string, user: string, maxTokens: number, opts: GenerateOptions): Promise<string> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -19,11 +30,28 @@ async function callAnthropic(system: string, user: string, maxTokens: number): P
       "x-api-key": config.ANTHROPIC_API_KEY as string,
       "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify({ model: config.LLM_MODEL, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] }),
+    body: JSON.stringify({
+      model: config.LLM_MODEL,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: "user", content: user }],
+      ...(opts.effort ? { output_config: { effort: opts.effort } } : {}),
+    }),
   });
   if (!res.ok) throw new Error(`anthropic ${res.status}: ${await res.text()}`);
-  const data = (await res.json()) as { content?: Array<{ text?: string }> };
-  return data.content?.[0]?.text ?? "";
+  const data = (await res.json()) as { content?: Array<{ type?: string; text?: string }>; stop_reason?: string; usage?: { input_tokens?: number; output_tokens?: number } };
+  // claude-sonnet-5 : thinking adaptatif ACTIF par défaut → content[0] peut être un
+  // bloc "thinking" (texte vide). On concatène uniquement les blocs "text".
+  const text = (data.content ?? [])
+    .filter((b) => b.type === "text" && typeof b.text === "string")
+    .map((b) => b.text)
+    .join("");
+  if (!text.trim()) {
+    logger.warn("anthropic_empty_text", { stop_reason: data.stop_reason, usage: data.usage, maxTokens, effort: opts.effort ?? null });
+    throw new Error(`anthropic : réponse sans texte (stop_reason=${data.stop_reason ?? "?"}, ${data.usage?.output_tokens ?? 0} jetons de sortie sur ${maxTokens}) — augmente max_tokens ou baisse l'effort`);
+  }
+  if (data.stop_reason === "max_tokens") logger.warn("anthropic_truncated", { maxTokens, usage: data.usage });
+  return text;
 }
 
 async function callOpenAI(system: string, user: string, maxTokens: number): Promise<string> {

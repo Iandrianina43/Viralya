@@ -1,31 +1,41 @@
 import { Router } from "express";
 import { asyncHandler } from "../lib/asyncHandler";
-import { enqueue } from "../queue/queue";
+import { HttpError } from "../lib/httpError";
+import { requireContentItem } from "../lib/scope";
+import { listVersions, restoreVersion, snapshotVersion } from "../lib/versions";
+import { enqueue, requestCancel } from "../queue/queue";
 import { supabase } from "../supabase";
 
+// Contenus de l'organisation active (via l'influenceur propriétaire).
 export const contentRouter = Router();
 
 contentRouter.get(
   "/",
   asyncHandler(async (req, res) => {
-    let q = supabase.from("content_items").select("*").order("created_at", { ascending: false }).limit(200);
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit ?? 200)));
+    let q = supabase
+      .from("content_items")
+      .select("*, avatars!inner(org_id, name)")
+      .eq("avatars.org_id", req.org!.id)
+      .order("created_at", { ascending: false })
+      .limit(limit);
     if (req.query.avatar_id) q = q.eq("avatar_id", String(req.query.avatar_id));
     if (req.query.status) q = q.eq("status", String(req.query.status));
+    if (req.query.type) q = q.eq("type", String(req.query.type));
     const { data, error } = await q;
     if (error) throw error;
-    res.json({ content: data });
+    const content = (data ?? []).map((row: Record<string, any>) => {
+      const { avatars, ...item } = row;
+      return { ...item, avatar_name: avatars?.name ?? null };
+    });
+    res.json({ content });
   }),
 );
 
 contentRouter.get(
   "/:id",
   asyncHandler(async (req, res) => {
-    const { data, error } = await supabase.from("content_items").select("*").eq("id", req.params.id).single();
-    if (error || !data) {
-      res.status(404).json({ error: "not_found" });
-      return;
-    }
-    res.json({ item: data });
+    res.json({ item: await requireContentItem(req.org!.id, String(req.params.id)) });
   }),
 );
 
@@ -33,89 +43,27 @@ contentRouter.get(
 contentRouter.post(
   "/:id/approve",
   asyncHandler(async (req, res) => {
-    const { data: item, error } = await supabase.from("content_items").select("id, status").eq("id", req.params.id).single();
-    if (error || !item) {
-      res.status(404).json({ error: "not_found" });
-      return;
-    }
-    if (!["needs_review", "failed"].includes(item.status)) {
-      res.status(409).json({ error: `statut ${item.status} non approuvable` });
-      return;
-    }
+    const item = await requireContentItem(req.org!.id, String(req.params.id), "id, status, avatar_id, title");
+    if (!["needs_review", "failed"].includes(item.status)) throw new HttpError(409, `statut ${item.status} non approuvable`);
     const scheduledAt = req.body?.scheduled_at as string | undefined;
-    const job = await enqueue("schedule", { content_item_id: item.id, ...(scheduledAt ? { scheduled_at: scheduledAt } : {}) }, { contentItemId: item.id });
+    const job = await enqueue(
+      "schedule",
+      { content_item_id: item.id, ...(scheduledAt ? { scheduled_at: scheduledAt } : {}) },
+      { contentItemId: item.id, avatarId: item.avatar_id, label: item.title ?? "Programmation" },
+    );
     res.status(202).json({ ok: true, job_id: job.id });
   }),
 );
 
-// Valide les images (keyframes) → reprend la production : animation + montage.
-contentRouter.post(
-  "/:id/approve-images",
-  asyncHandler(async (req, res) => {
-    const { data: item, error } = await supabase.from("content_items").select("id, assets").eq("id", req.params.id).single();
-    if (error || !item) { res.status(404).json({ error: "not_found" }); return; }
-    const assets = (item.assets ?? {}) as Record<string, unknown>;
-    const log = Array.isArray(assets.log) ? (assets.log as Array<{ t: string; msg: string }>) : [];
-    log.push({ t: new Date().toISOString(), msg: "▶️ Images validées — animation des scènes" });
-    await supabase
-      .from("content_items")
-      .update({ assets: { ...assets, images_approved: true, awaiting_approval: false, log } })
-      .eq("id", item.id);
-    const job = await enqueue("poll_video", { content_item_id: item.id }, { contentItemId: item.id });
-    res.status(202).json({ ok: true, job_id: job.id });
-  }),
-);
-
-// Régénère l'image d'une scène (avant validation) — sans relancer toute la production.
-contentRouter.post(
-  "/:id/scenes/:idx/regenerate-image",
-  asyncHandler(async (req, res) => {
-    const { data: item, error } = await supabase.from("content_items").select("id, assets").eq("id", req.params.id).single();
-    if (error || !item) { res.status(404).json({ error: "not_found" }); return; }
-    const assets = (item.assets ?? {}) as Record<string, any>;
-    const idx = Number(req.params.idx);
-    const scenes = Array.isArray(assets.scenes) ? assets.scenes : [];
-    const sc = scenes.find((s: { idx: number }) => s.idx === idx);
-    if (!sc) { res.status(404).json({ error: "scène introuvable" }); return; }
-    sc.phase = "waiting";
-    sc.keyframe_url = undefined;
-    sc.hf_job_id = undefined;
-    sc.submit_attempts = 0;
-    const log = Array.isArray(assets.log) ? assets.log : [];
-    log.push({ t: new Date().toISOString(), msg: `🔄 Scène ${idx + 1} : nouvelle image demandée` });
-    await supabase
-      .from("content_items")
-      .update({ assets: { ...assets, scenes, log, awaiting_approval: false } })
-      .eq("id", item.id);
-    const job = await enqueue("poll_video", { content_item_id: item.id }, { contentItemId: item.id });
-    res.status(202).json({ ok: true, job_id: job.id });
-  }),
-);
-
-// Annule une production en cours : stoppe les jobs en file et marque le contenu.
-// (Les rendus déjà lancés chez le provider ne sont pas facturés en retour, mais
-// plus aucune étape suivante ne sera soumise.)
+// Annule une production en cours : les jobs en file sont annulés, ceux en cours
+// s'arrêtent à leur prochaine étape ; le contenu passe en "canceled".
 contentRouter.post(
   "/:id/cancel",
   asyncHandler(async (req, res) => {
-    const { data: item, error } = await supabase.from("content_items").select("id, status").eq("id", req.params.id).single();
-    if (error || !item) {
-      res.status(404).json({ error: "not_found" });
-      return;
-    }
-    if (["needs_review", "published", "scheduled", "failed"].includes(item.status)) {
-      res.status(409).json({ error: `production ${item.status} — rien à annuler` });
-      return;
-    }
-    await supabase
-      .from("jobs")
-      .update({ status: "canceled", locked_at: null, locked_by: null })
-      .eq("content_item_id", item.id)
-      .in("status", ["pending", "running"]);
-    await supabase
-      .from("content_items")
-      .update({ status: "failed", error: "Production annulée" })
-      .eq("id", item.id);
+    const item = await requireContentItem(req.org!.id, String(req.params.id), "id, status");
+    if (!["queued", "generating"].includes(item.status)) throw new HttpError(409, `production ${item.status} — rien à annuler`);
+    await requestCancel(item.id);
+    await supabase.from("content_items").update({ status: "canceled", error: "Production annulée" }).eq("id", item.id);
     res.json({ ok: true });
   }),
 );
@@ -123,23 +71,97 @@ contentRouter.post(
 contentRouter.post(
   "/:id/reject",
   asyncHandler(async (req, res) => {
-    const { error } = await supabase.from("content_items").update({ status: "failed", error: "rejeté en revue" }).eq("id", req.params.id);
+    const item = await requireContentItem(req.org!.id, String(req.params.id), "id");
+    const { error } = await supabase.from("content_items").update({ status: "failed", error: "rejeté en revue" }).eq("id", item.id);
     if (error) throw error;
     res.json({ ok: true });
   }),
 );
 
-// Régénère depuis le début (utile après avoir assigné visage/voix, ou après échec).
+// Régénère depuis le début. L'état courant est figé en version avant relance.
 contentRouter.post(
   "/:id/retry",
   asyncHandler(async (req, res) => {
-    const { data: item, error } = await supabase.from("content_items").select("id").eq("id", req.params.id).single();
-    if (error || !item) {
-      res.status(404).json({ error: "not_found" });
-      return;
-    }
+    const item = await requireContentItem(req.org!.id, String(req.params.id), "id, avatar_id, title, status");
+    await snapshotVersion(item.id, "Avant régénération", req.user?.id ?? null);
     await supabase.from("content_items").update({ status: "queued", error: null }).eq("id", item.id);
-    const job = await enqueue("generate_text", { content_item_id: item.id }, { contentItemId: item.id });
+    const job = await enqueue(
+      "generate_text",
+      { avatar_id: item.avatar_id, content_item_id: item.id },
+      { contentItemId: item.id, avatarId: item.avatar_id, label: item.title ?? "Régénération" },
+    );
     res.status(202).json({ ok: true, job_id: job.id });
+  }),
+);
+
+// ── Régénération d'UN plan (vidéo hybride) ───────────────────
+// body : { texte?: string (nouvelle réplique → voix refaite), talk_provider?: "kling-avatar"|"omnihuman" }
+// Les autres plans sont conservés ; la vidéo est remontée à la fin. L'état courant est figé en version.
+contentRouter.post(
+  "/:id/shots/:idx/regenerate",
+  asyncHandler(async (req, res) => {
+    const item = await requireContentItem(req.org!.id, String(req.params.id), "id, avatar_id, title, status, type, payload, assets");
+    if (item.type !== "video" || item.payload?.format !== "hybrid") throw new HttpError(409, "ce contenu n'est pas une vidéo hybride");
+    if (["queued", "generating"].includes(item.status)) throw new HttpError(409, "production en cours — attends la fin ou annule-la");
+    const idx = Number(req.params.idx);
+    const shots = Array.isArray(item.assets?.shots) ? (item.assets.shots as Array<Record<string, any>>) : [];
+    const shot = shots.find((s) => Number(s.idx) === idx);
+    if (!Number.isInteger(idx) || !shot) throw new HttpError(404, "plan introuvable");
+
+    await snapshotVersion(item.id, `Avant régénération du plan ${idx + 1}`, req.user?.id ?? null);
+
+    const payload = { ...(item.payload as Record<string, any>) };
+    const { isTalkProvider } = await import("../providers/talkingAvatar");
+    if (isTalkProvider(req.body?.talk_provider)) payload.talk_provider = req.body.talk_provider;
+
+    const newText = typeof req.body?.texte === "string" ? req.body.texte.trim() : null;
+    const textChanged = newText != null && newText !== String(shot.texte ?? "").trim();
+    if (textChanged) {
+      shot.texte = newText;
+      const scenes = (payload.production?.scenes ?? []) as Array<Record<string, any>>;
+      if (scenes[idx]) scenes[idx] = { ...scenes[idx], texte: newText };
+      payload.script = scenes.map((s) => s.texte).join(" ");
+    }
+    Object.assign(shot, {
+      phase: textChanged ? "voice" : "waiting",
+      version: Number(shot.version ?? 1) + 1,
+      task_id: undefined, clip_url: undefined, qc: null, error: undefined, submit_attempts: 0, cost_usd: 0,
+      ...(textChanged ? { audio_url: null, audio_seconds: null, words: null } : {}),
+    });
+    const log = Array.isArray(item.assets?.log) ? [...(item.assets.log as unknown[])] : [];
+    log.push({ t: new Date().toISOString(), msg: `🔁 Plan ${idx + 1} : régénération demandée${textChanged ? " (nouvelle réplique)" : ""}` });
+
+    await supabase
+      .from("content_items")
+      .update({ status: "generating", error: null, payload, assets: { ...(item.assets as Record<string, unknown>), shots, log, assembling: false } })
+      .eq("id", item.id);
+
+    const job = await enqueue(
+      textChanged ? "generate_voice" : "generate_shots",
+      { avatar_id: item.avatar_id, content_item_id: item.id, only_shots: [idx] },
+      { contentItemId: item.id, avatarId: item.avatar_id, label: `${item.title ?? "Vidéo"} — plan ${idx + 1}` },
+    );
+    res.status(202).json({ ok: true, job_id: job.id, voice_regenerated: textChanged });
+  }),
+);
+
+// ── Versions ─────────────────────────────────────────────────
+contentRouter.get(
+  "/:id/versions",
+  asyncHandler(async (req, res) => {
+    const item = await requireContentItem(req.org!.id, String(req.params.id), "id, current_version");
+    const versions = await listVersions(item.id);
+    res.json({ current_version: item.current_version ?? 0, versions });
+  }),
+);
+
+contentRouter.post(
+  "/:id/versions/:no/restore",
+  asyncHandler(async (req, res) => {
+    const item = await requireContentItem(req.org!.id, String(req.params.id), "id");
+    const no = Number(req.params.no);
+    if (!Number.isInteger(no) || no < 1) throw new HttpError(400, "numéro de version invalide");
+    const saved = await restoreVersion(item.id, no, req.user?.id ?? null);
+    res.json({ ok: true, restored: no, previous_saved_as: saved });
   }),
 );

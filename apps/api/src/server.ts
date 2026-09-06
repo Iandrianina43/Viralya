@@ -41,7 +41,9 @@ export function createServer() {
 
   const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     const status = typeof err?.status === "number" ? err.status : 500;
-    logger.error("unhandled_error", { status, err: String(err?.message ?? err) });
+    // 4xx = refus attendu (404 hors organisation, 400 validation…) : simple avertissement.
+    if (status >= 500) logger.error("unhandled_error", { status, err: String(err?.message ?? err) });
+    else logger.warn("request_rejected", { status, err: String(err?.message ?? err) });
     res.status(status).json({ error: err?.message ?? "internal_error" });
   };
   app.use(errorHandler);

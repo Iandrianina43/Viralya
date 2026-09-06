@@ -2,24 +2,65 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Tokens (source de vérité partagée avec tailwind.config.js) ── */
 :root {
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --paper: #edeff3;
+  --paper-2: #f7f8fa;
+  --surface: #ffffff;
+  --ink: #14171c;
+  --ink-2: #3a404b;
+  --muted: #5b6270;
+  --rule: #c9ced8;
+  --rule-soft: #dde1e8;
+  --accent: #2a3eaf;
+  --accent-dark: #1f2f8c;
+  --accent-soft: #e3e7f8;
+  --cost: #8a6210;
+  --cost-soft: #f3ebd6;
+  --ok: #2f6b3f;
+  --ok-soft: #ddebdf;
+  --warn: #9a3b2e;
+  --warn-soft: #f2deda;
+  color-scheme: light;
+  font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
 }
 
 body {
-  @apply bg-[#f6f7f9] text-slate-800 antialiased;
+  @apply bg-paper text-ink antialiased;
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+
+h1, h2, h3, h4 {
+  @apply font-sans tracking-tight;
 }
 
 @layer components {
   .card {
-    @apply bg-white rounded-2xl border border-slate-200/70 shadow-card;
+    @apply bg-white rounded border border-rule-soft shadow-card;
   }
   .btn-primary {
-    @apply bg-accent hover:bg-accent-dark text-white rounded-xl px-4 py-2.5 text-sm font-semibold shadow-sm transition;
+    @apply inline-flex items-center justify-center gap-2 h-10 px-4 rounded bg-accent text-white text-sm font-semibold hover:bg-accent-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 h-10 px-4 rounded bg-white border border-rule text-sm font-semibold text-ink hover:bg-paper-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .input {
+    @apply w-full h-10 px-3 rounded border border-rule bg-white text-sm text-ink placeholder:text-muted focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20;
+  }
+  .label {
+    @apply block font-sans text-[11px] font-semibold uppercase tracking-[0.1em] text-muted mb-1.5;
+  }
+  .eyebrow {
+    @apply font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-muted;
   }
 }
 
 @keyframes modalIn {
   from { opacity: 0; transform: translateY(6px) scale(0.98); }
   to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }

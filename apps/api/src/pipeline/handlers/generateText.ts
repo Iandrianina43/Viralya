@@ -35,7 +35,8 @@ export async function generateTextJob(job: JobRow): Promise<void> {
     getMemoryBrief(item.avatar_id),
   ]);
 
-  const raw = await generateText(system, buildUserPrompt(item.type, item.network as Network, item.ratio_class, theme, contextBrief, memoryBrief));
+  // Les réponses longues (vidéo multi-scènes) dépassaient 900 tokens → JSON tronqué, légende perdue.
+  const raw = await generateText(system, buildUserPrompt(item.type, item.network as Network, item.ratio_class, theme, contextBrief, memoryBrief), item.type === "video" ? 2000 : 1200);
   const parsed = extractJson<LlmContent>(raw) ?? {};
 
   const scenes = (item.type === "video" && Array.isArray(parsed.scenes) ? parsed.scenes : [])
@@ -77,7 +78,13 @@ function buildUserPrompt(type: ContentType, network: Network, rc: RatioClass, th
     `Ajoute "memory_note" : UNE phrase de ce que tu retiens de ce post (continuité future).`,
   ];
   const shape =
-    type === "carousel"
+    type === "photo"
+      ? [
+          `C'est une PHOTO de toi : "${theme}". Écris la légende comme si tu la postais toi-même : 2 à 4 phrases en français, naturelles, ancrées dans le moment, qui se terminent par une question à ta communauté. Pas de script.`,
+          `Hashtags : 3 maximum, pertinents (les hashtags en masse font perdre des vues).`,
+          `Réponds UNIQUEMENT en JSON : {"caption": string, "hashtags": string[], "cta": string, "memory_note": string}.`,
+        ].join("\n")
+      : type === "carousel"
       ? `Réponds UNIQUEMENT en JSON : {"caption": string, "hashtags": string[], "cta": string, "memory_note": string}.`
       : type === "video"
         ? [

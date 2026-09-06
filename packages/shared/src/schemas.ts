@@ -33,12 +33,14 @@ export const AvatarInputSchema = z.object({
   priority_networks: z.array(zEnum(NETWORKS)).default(["instagram", "tiktok"]),
   is_ai_disclosed: z.boolean().default(true),
   status: z.enum(["draft", "active", "paused"]).default("draft"),
-  // Identité média
-  video_provider: zEnum(VIDEO_PROVIDERS).default("heygen"),
-  video_avatar_id: z.string().nullable().default(null), // HeyGen avatar_id / Argil avatar id
-  voice_id: z.string().nullable().default(null), // voice du moteur vidéo
+  // Identité média (moteur vidéo : Seedance 2.0 via PiAPI)
+  video_provider: zEnum(VIDEO_PROVIDERS).default("piapi"),
   ref_image_url: z.string().url().nullable().default(null),
-  // Voix ElevenLabs choisie à la création (identité / preview)
+  // Fiche portrait structurée + planche d'identité + timbre de voix
+  portrait_spec: z.record(z.string()).nullable().default(null),
+  character_sheet_url: z.string().url().nullable().default(null),
+  voice_sample_urls: z.array(z.string().url()).default([]),
+  // Voix ElevenLabs choisie à la création (identité / preview / timbre)
   eleven_voice_id: z.string().nullable().default(null),
   eleven_voice_name: z.string().nullable().default(null),
 });

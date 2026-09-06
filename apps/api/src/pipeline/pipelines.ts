@@ -10,7 +10,17 @@ export const PIPELINES: Record<ContentType, JobType[]> = {
   tweet: ["generate_text", "assemble"],
   story: ["generate_text", "generate_image", "assemble"],
   carousel: ["generate_text", "generate_image", "assemble"],
+  // Photo de l'influenceur : légende (texte) → image multi-référence + QC visage → revue.
+  photo: ["generate_text", "generate_photo", "assemble"],
 };
+
+// Vidéo v2 hybride (payload.format = "hybrid") : voix ElevenLabs → plans → suivi + montage → revue.
+export const HYBRID_PIPELINE: JobType[] = ["generate_text", "generate_voice", "generate_shots", "poll_shots", "assemble"];
+
+export function pipelineFor(item: Pick<ContentItemRow, "type" | "payload">): JobType[] {
+  if (item.type === "video" && item.payload?.format === "hybrid") return HYBRID_PIPELINE;
+  return PIPELINES[item.type];
+}
 
 export interface ContentItemRow {
   id: string;
@@ -21,6 +31,8 @@ export interface ContentItemRow {
   status: string;
   payload: Record<string, any>;
   assets: Record<string, any>;
+  title?: string | null;
+  current_version?: number;
 }
 
 export function requireContentItemId(job: JobRow): string {
@@ -53,8 +65,13 @@ export async function mergeAssets(id: string, patch: Record<string, unknown>): P
 export async function advance(job: JobRow, opts: { runAfterMs?: number } = {}): Promise<void> {
   const id = requireContentItemId(job);
   const item = await loadContentItem(id);
-  const pipe = PIPELINES[item.type];
+  const pipe = pipelineFor(item);
   const next = pipe[pipe.indexOf(job.type) + 1];
   if (!next) return;
-  await enqueue(next, { ...job.payload }, { contentItemId: id, runAfterMs: opts.runAfterMs });
+  await enqueue(next, { ...job.payload }, {
+    contentItemId: id,
+    runAfterMs: opts.runAfterMs,
+    avatarId: job.avatar_id ?? item.avatar_id,
+    label: job.label ?? item.title ?? null,
+  });
 }

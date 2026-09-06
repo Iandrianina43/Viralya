@@ -2,17 +2,19 @@ import { AvatarInputSchema } from "@viralya/shared";
 import { Router } from "express";
 import { buildSystemPrompt } from "../domain/systemPrompt";
 import { asyncHandler } from "../lib/asyncHandler";
+import { notFound } from "../lib/httpError";
 import { supabase } from "../supabase";
 
-// Brouillons de création d'avatar (Chat Ultime) — auto-save serveur.
+// Brouillons de création d'avatar (Chat Ultime) — auto-save serveur, par organisation.
 export const avatarDraftsRouter = Router();
 
 avatarDraftsRouter.get(
   "/",
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
     const { data, error } = await supabase
       .from("avatar_drafts")
       .select("id, title, ready, updated_at")
+      .eq("org_id", req.org!.id)
       .order("updated_at", { ascending: false });
     if (error) throw error;
     res.json({ drafts: data });
@@ -22,11 +24,9 @@ avatarDraftsRouter.get(
 avatarDraftsRouter.get(
   "/:id",
   asyncHandler(async (req, res) => {
-    const { data, error } = await supabase.from("avatar_drafts").select("*").eq("id", req.params.id).single();
-    if (error || !data) {
-      res.status(404).json({ error: "not_found" });
-      return;
-    }
+    const { data, error } = await supabase.from("avatar_drafts").select("*").eq("id", req.params.id).eq("org_id", req.org!.id).maybeSingle();
+    if (error) throw error;
+    if (!data) throw notFound("Brouillon");
     res.json({ record: data });
   }),
 );
@@ -44,7 +44,7 @@ function body(req: { body?: Record<string, unknown> }) {
 avatarDraftsRouter.post(
   "/",
   asyncHandler(async (req, res) => {
-    const { data, error } = await supabase.from("avatar_drafts").insert(body(req)).select("*").single();
+    const { data, error } = await supabase.from("avatar_drafts").insert({ ...body(req), org_id: req.org!.id }).select("*").single();
     if (error) throw error;
     res.status(201).json({ record: data });
   }),
@@ -53,11 +53,15 @@ avatarDraftsRouter.post(
 avatarDraftsRouter.put(
   "/:id",
   asyncHandler(async (req, res) => {
-    const { data, error } = await supabase.from("avatar_drafts").update(body(req)).eq("id", req.params.id).select("*").single();
-    if (error || !data) {
-      res.status(404).json({ error: "not_found" });
-      return;
-    }
+    const { data, error } = await supabase
+      .from("avatar_drafts")
+      .update(body(req))
+      .eq("id", req.params.id)
+      .eq("org_id", req.org!.id)
+      .select("*")
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) throw notFound("Brouillon");
     res.json({ record: data });
   }),
 );
@@ -65,7 +69,7 @@ avatarDraftsRouter.put(
 avatarDraftsRouter.delete(
   "/:id",
   asyncHandler(async (req, res) => {
-    const { error } = await supabase.from("avatar_drafts").delete().eq("id", req.params.id);
+    const { error } = await supabase.from("avatar_drafts").delete().eq("id", req.params.id).eq("org_id", req.org!.id);
     if (error) throw error;
     res.status(204).end();
   }),
@@ -75,11 +79,10 @@ avatarDraftsRouter.delete(
 avatarDraftsRouter.post(
   "/:id/finalize",
   asyncHandler(async (req, res) => {
-    const { data: rec, error } = await supabase.from("avatar_drafts").select("*").eq("id", req.params.id).single();
-    if (error || !rec) {
-      res.status(404).json({ error: "not_found" });
-      return;
-    }
+    const orgId = req.org!.id;
+    const { data: rec, error } = await supabase.from("avatar_drafts").select("*").eq("id", req.params.id).eq("org_id", orgId).maybeSingle();
+    if (error) throw error;
+    if (!rec) throw notFound("Brouillon");
     const f = (rec.fiche ?? {}) as Record<string, any>;
     const parsed = AvatarInputSchema.safeParse({
       name: f.name,
@@ -98,6 +101,7 @@ avatarDraftsRouter.post(
       is_ai_disclosed: true,
       status: "active",
       ref_image_url: f.ref_image_url ?? null,
+      portrait_spec: f.portrait_spec ?? null,
       eleven_voice_id: f.eleven_voice_id ?? null,
       eleven_voice_name: f.eleven_voice_name ?? null,
     });
@@ -108,12 +112,36 @@ avatarDraftsRouter.post(
     const system_prompt = buildSystemPrompt(parsed.data);
     const { data: avatar, error: insErr } = await supabase
       .from("avatars")
-      .insert({ ...parsed.data, system_prompt })
+      .insert({ ...parsed.data, system_prompt, org_id: orgId })
       .select("*")
       .single();
     if (insErr) throw insErr;
 
-    await supabase.from("avatar_drafts").delete().eq("id", req.params.id);
+    await supabase.from("avatar_drafts").delete().eq("id", req.params.id).eq("org_id", orgId);
     res.status(201).json({ avatar });
+
+    // En tâche de fond : planche d'identité + échantillons de timbre.
+    // Non bloquant — regénérables depuis l'éditeur.
+    void (async () => {
+      try {
+        if (avatar.ref_image_url) {
+          const { composeKeyframe } = await import("../providers/image");
+          const { buildCharacterSheetPrompt } = await import("../domain/faceGen");
+          const { imageUrl } = await composeKeyframe(
+            avatar.ref_image_url, null, buildCharacterSheetPrompt(avatar.portrait_spec ?? null),
+            `${avatar.id}/character-sheet-${Date.now()}`, "1536x1024",
+          );
+          await supabase.from("avatars").update({ character_sheet_url: imageUrl }).eq("id", avatar.id);
+        }
+        if (avatar.eleven_voice_id) {
+          const { generateVoiceSamples } = await import("../providers/elevenlabs");
+          const urls = await generateVoiceSamples(avatar.eleven_voice_id, avatar.id);
+          await supabase.from("avatars").update({ voice_sample_urls: urls }).eq("id", avatar.id);
+        }
+      } catch (err) {
+        const { logger } = await import("../logger");
+        logger.warn("avatar_refs_bootstrap_failed", { avatarId: avatar.id, err: String((err as Error)?.message ?? err) });
+      }
+    })();
   }),
 );

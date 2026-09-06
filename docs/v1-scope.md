@@ -1,3 +1,5 @@
+> **Document historique (août 2026).** Le périmètre V1 décrit ici est dépassé : HeyGen et Argil ont été retirés au profit de PiAPI/Seedance, et le cadrage actuel est dans `docs/BRIEF.md` (brief) et `docs/PLAN-REFONTE.md` (audit, décisions, phases).
+
 # VIRALYA — Périmètre V1 (rebuild from scratch)
 
 ## Objectif V1

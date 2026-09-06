@@ -88,8 +88,8 @@ export function Settings() {
     ? [
         { label: `Texte (${setup.llm.provider})`, ok: setup.llm.configured },
         { label: "Images (OpenAI)", ok: setup.image.configured },
-        { label: "HeyGen", ok: setup.heygen.configured },
-        { label: "Argil", ok: setup.argil.configured },
+        { label: "Vidéo Seedance 2.0 (PiAPI)", ok: setup.piapi.configured },
+        { label: "Voix (ElevenLabs)", ok: setup.elevenlabs.configured },
       ]
     : [];
 

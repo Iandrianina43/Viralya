@@ -10,7 +10,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@higgsfield/client": "^0.2.1",
     "@supabase/supabase-js": "^2.45.4",
     "@viralya/shared": "workspace:*",
     "cors": "^2.8.5",

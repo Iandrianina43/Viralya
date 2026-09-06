@@ -99,8 +99,13 @@ export function Avatars() {
                 <Link to={`/avatars/${a.id}/studio`} className="btn-primary w-full flex items-center justify-center gap-2">
                   <Clapperboard className="w-4 h-4" /> Ouvrir le studio
                 </Link>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <Link to={`/avatars/${a.id}/calendar`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center" title="Calendrier éditorial du mois">📅 Calendrier</Link>
+                  <Link to={`/avatars/${a.id}/social`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center" title="Compte social : profil, feed, statistiques">📱 Compte</Link>
+                </div>
+                <div className="grid grid-cols-5 gap-2">
                   <button onClick={() => planDay(a.id)} disabled={busy === a.id} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center flex items-center justify-center gap-1 disabled:opacity-50" title="Générer le contenu du jour"><Wand2 className="w-3.5 h-3.5" /></button>
+                  <Link to={`/avatars/${a.id}/bible`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center" title="Character Bible : références, garde-robe, photos">Bible</Link>
                   <Link to={`/avatars/${a.id}/journal`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center">Journal</Link>
                   <Link to={`/avatars/${a.id}`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center flex items-center justify-center gap-1" title="Éditer"><Pencil className="w-3.5 h-3.5" /></Link>
                   <button onClick={() => setConfirmAvatar(a)} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 text-center flex items-center justify-center" title="Supprimer l'avatar"><Trash2 className="w-3.5 h-3.5" /></button>

@@ -1,7 +1,12 @@
+import { setDefaultResultOrder } from "node:dns";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import { z } from "zod";
+
+// Windows/Node : fetch (undici) tente l'IPv6 en premier et échoue ("fetch failed")
+// vers certaines API (api.piapi.ai) alors que curl passe → on force l'IPv4 d'abord.
+setDefaultResultOrder("ipv4first");
 
 const here = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: resolve(here, "../../../.env") });
@@ -29,20 +34,29 @@ const EnvSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
 
-  IMAGE_PROVIDER: z.enum(["openai", "stub"]).default("openai"),
+  // Images : PiAPI (Seedream 5 Pro / Nano Banana 2, banc du 3 sept. 2026) par défaut ; OpenAI en option.
+  IMAGE_PROVIDER: z.enum(["piapi", "openai", "stub"]).default("piapi"),
+  IMAGE_MODEL: z.string().default("seedream-5-pro"),
+  // Contrôle qualité des visages (tools/qc/face_score.py — Python + OpenCV).
+  PYTHON_BIN: z.string().default("python"),
 
   // Voix ElevenLabs (écoute + choix à la création)
   ELEVENLABS_API_KEY: z.string().optional(),
 
-  VIDEO_PROVIDER: z.enum(["heygen", "argil", "higgsfield", "stub"]).default("heygen"),
-  HEYGEN_API_KEY: z.string().optional(),
-  ARGIL_API_KEY: z.string().optional(),
-  HIGGSFIELD_API_KEY: z.string().optional(),
-  HIGGSFIELD_API_SECRET: z.string().optional(),
+  // Moteur vidéo principal : Seedance 2.0 via PiAPI.
+  PIAPI_API_KEY: z.string().optional(),
 
   NEWS_API_KEY: z.string().optional(),
 
+  // Publication réelle (phase 4) : clé Ayrshare (compte Business, un profil par influenceur).
+  // Sans clé, la publication est simulée (compte social interne).
+  AYRSHARE_API_KEY: z.string().optional(),
+
   RUN_WORKER_INLINE: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
+  // Génération quotidienne automatique (pg_cron → plan_day). Désactivée par défaut :
+  // l'ancien plan V1 (1 vidéo + 2 accroches + 1 carrousel « astuce business ») coûte
+  // ≈ 1,40 $ par influenceur et par jour ; le calendrier de la phase 3 le remplacera.
+  DAILY_PLAN_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
 });
 
 const parsed = EnvSchema.safeParse(process.env);

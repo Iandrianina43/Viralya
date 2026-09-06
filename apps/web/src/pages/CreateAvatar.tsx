@@ -1,7 +1,7 @@
-import { ArrowLeft, Check, Play, RefreshCw, Sparkles, Square, Volume2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Play, RefreshCw, Sparkles, Square, Volume2, Wand2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api, type AvatarDraft, type ChatMessage, type ElevenVoice } from "../api";
+import { api, type AvatarDraft, type ChatMessage, type ElevenVoice, type PortraitSpec } from "../api";
 import { Loader, LoaderTile } from "../components/Loader";
 
 const WELCOME =
@@ -10,10 +10,14 @@ const WELCOME =
   "le style (homme/femme, jeune/plus mûr…). Pas d'idée précise ? Donne-moi juste un secteur ou " +
   "un vibe, et je te fais des propositions concrètes. 🚀";
 
-const IMAGE_MODELS = [
-  { id: "gpt-image-2", label: "GPT Image 2 (OpenAI) ⭐" },
-  { id: "gpt-image-1", label: "gpt-image-1 (OpenAI)" },
-];
+// Libellés FR des champs de la fiche portrait structurée (valeurs en anglais).
+const SPEC_LABELS: Record<string, string> = {
+  aspect_ratio: "Ratio", age: "Âge", ethnicity: "Origine", shot_style: "Style de photo",
+  framing: "Cadrage", skin_tone: "Peau", hair_style: "Coiffure", hair_color: "Couleur cheveux",
+  eyes: "Yeux", brows: "Sourcils", nose: "Nez", lips: "Lèvres", facial_hair: "Pilosité faciale",
+  face_shape: "Forme du visage", expression: "Expression", clothing: "Tenue", makeup: "Maquillage",
+  lighting: "Lumière", background: "Arrière-plan", realism: "Réalisme",
+};
 
 const LANG_LABELS: Record<string, string> = {
   en: "Anglais", fr: "Français", es: "Espagnol", de: "Allemand", it: "Italien",
@@ -90,8 +94,10 @@ export function CreateAvatar() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Visage
-  const [model, setModel] = useState("gpt-image-2");
+  // Visage — fiche portrait structurée (IA pré-remplit, tu ajustes) → génération.
+  const [spec, setSpec] = useState<PortraitSpec | null>(null);
+  const [specLoading, setSpecLoading] = useState(false);
+  const [specOpen, setSpecOpen] = useState(false);
   const [refine, setRefine] = useState("");
   const [faceLoading, setFaceLoading] = useState(false);
 
@@ -179,11 +185,25 @@ export function CreateAvatar() {
     await runStream([...messages, { role: "user", content: text }], draft);
   };
 
+  // Pré-remplit (ou re-propose) la fiche portrait depuis le personnage + consigne libre.
+  const draftSpec = async () => {
+    setSpecLoading(true); setErr(null);
+    try {
+      const r = await api.draftPortraitSpec(draft, refine.trim() || undefined);
+      setSpec(r.spec);
+      setSpecOpen(true);
+      const nd: AvatarDraft = { ...draft, portrait_spec: r.spec };
+      setDraft(nd);
+      await saveDraft(messages, nd, ready);
+    } catch (e) { setErr(String(e)); } finally { setSpecLoading(false); }
+  };
+
   const genFace = async () => {
     setFaceLoading(true); setErr(null);
     try {
-      const r = await api.generateFace(draft, model, refine.trim() || undefined);
-      const nd: AvatarDraft = { ...draft, face_options: [...(draft.face_options ?? []), r.imageUrl] };
+      const r = await api.generateFace(draft, spec ?? draft.portrait_spec ?? null, refine.trim() || undefined);
+      if (!spec) setSpec(r.spec);
+      const nd: AvatarDraft = { ...draft, portrait_spec: r.spec, face_options: [...(draft.face_options ?? []), r.imageUrl] };
       setDraft(nd);
       await saveDraft(messages, nd, ready);
     } catch (e) { setErr(String(e)); } finally { setFaceLoading(false); }
@@ -243,7 +263,7 @@ export function CreateAvatar() {
           <button onClick={genFirst} className="btn-primary">🎬 Générer son 1er contenu</button>
           <button onClick={() => navigate("/avatars")} className="text-sm px-4 py-2.5 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-50">Voir mes avatars</button>
         </div>
-        <p className="text-xs text-slate-400 mt-8">💡 Pour la vidéo talking-head, configure le moteur (HeyGen / Argil) dans l'éditeur de l'avatar.</p>
+        <p className="text-xs text-slate-400 mt-8">💡 Sa planche d'identité (8 vues) et ses échantillons de voix se préparent en arrière-plan — visibles dans l'éditeur.</p>
       </div>
     );
   }
@@ -296,26 +316,44 @@ export function CreateAvatar() {
           {phase === "face" && (
             <div className="card p-5">
               <div className="font-semibold text-ink mb-1">Le visage de {draft.name || "ton avatar"}</div>
-              <p className="text-sm text-slate-500 mb-4">Génère un portrait, affine-le avec tes instructions, et choisis celui qui te plaît.</p>
+              <p className="text-sm text-slate-500 mb-4">L'IA propose une fiche portrait détaillée, tu l'ajustes champ par champ, puis tu génères les portraits.</p>
 
               <div className="flex flex-wrap items-end gap-3 mb-3">
-                <label className="text-sm">
-                  <span className="text-slate-600 block mb-1">Modèle d'image</span>
-                  <select className="border border-slate-300 rounded-xl px-3 py-2 text-sm" value={model} onChange={(e) => setModel(e.target.value)}>
-                    {IMAGE_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-                  </select>
-                </label>
                 <label className="text-sm flex-1 min-w-[220px]">
-                  <span className="text-slate-600 block mb-1">Affiner (optionnel)</span>
+                  <span className="text-slate-600 block mb-1">Consigne libre (optionnel)</span>
                   <input className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm" placeholder="ex : plus jeune, lunettes, cheveux bruns, fond bureau…" value={refine} onChange={(e) => setRefine(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !faceLoading && genFace()} />
                 </label>
+                <button onClick={draftSpec} disabled={specLoading} className="px-3.5 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm flex items-center gap-2 disabled:opacity-50">
+                  {specLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                  {spec ? "Re-proposer la fiche" : "Proposer la fiche (IA)"}
+                </button>
                 <button onClick={genFace} disabled={faceLoading} className="btn-primary flex items-center gap-2 disabled:opacity-50">
                   {options.length ? <RefreshCw className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
                   {faceLoading ? "Génération…" : options.length ? "Générer un autre" : "Générer un portrait"}
                 </button>
               </div>
 
-              {options.length === 0 && !faceLoading && <div className="text-slate-400 text-sm mb-3">Aucun portrait encore. Clique « Générer un portrait ».</div>}
+              {/* Fiche portrait structurée, ajustable champ par champ */}
+              {spec && (
+                <div className="rounded-xl border border-slate-200 mb-3 overflow-hidden">
+                  <button onClick={() => setSpecOpen(!specOpen)} className="w-full flex items-center justify-between px-3.5 py-2 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Fiche portrait ({Object.keys(spec).length} champs, en anglais) {specOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                  </button>
+                  {specOpen && (
+                    <div className="grid sm:grid-cols-2 gap-x-4 gap-y-2 p-3.5">
+                      {Object.entries(spec).map(([k, v]) => (
+                        <label key={k} className="block">
+                          <span className="text-[11px] text-slate-400">{SPEC_LABELS[k] ?? k}</span>
+                          <input className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-accent"
+                            value={v} onChange={(e) => setSpec((s) => (s ? { ...s, [k]: e.target.value } : s))} />
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {options.length === 0 && !faceLoading && <div className="text-slate-400 text-sm mb-3">Aucun portrait encore. Propose la fiche, ajuste-la, puis « Générer un portrait ».</div>}
 
               <div className="grid grid-cols-3 gap-3">
                 {options.map((url) => {

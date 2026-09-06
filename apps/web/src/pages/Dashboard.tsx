@@ -1,9 +1,10 @@
 import { ArrowRight, ArrowUpRight, CheckCircle2, ClipboardCheck, Clock, Image as ImageIcon, Sparkles, Video, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type Avatar, type ContentItem } from "../api";
+import { api, type Avatar, type ContentItem, type PiapiBalance, type PiapiHistory } from "../api";
 import { useAuth } from "../auth";
 import { AvatarPhoto } from "../components/AvatarPhoto";
+import { Onboarding } from "../components/Onboarding";
 
 // ─────────────────────────────────────────────────────────────
 // Dashboard — l'état de la plateforme en un coup d'œil.
@@ -36,12 +37,16 @@ export function Dashboard() {
   const { user } = useAuth();
   const [avatars, setAvatars] = useState<Avatar[]>([]);
   const [content, setContent] = useState<ContentItem[]>([]);
+  const [balance, setBalance] = useState<PiapiBalance | null>(null);
+  const [history, setHistory] = useState<PiapiHistory | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [hover, setHover] = useState<number | null>(null);
 
   useEffect(() => {
     api.listAvatars().then((r) => setAvatars(r.avatars)).catch((e) => setErr(String(e.message ?? e)));
     api.listContent().then((r) => setContent(r.content)).catch(() => {});
+    api.piapiBalance().then(setBalance).catch(() => {});
+    api.piapiHistory().then(setHistory).catch(() => {});
   }, []);
 
   const avatarName = useMemo(() => new Map(avatars.map((a) => [a.id, a.name])), [avatars]);
@@ -103,13 +108,29 @@ export function Dashboard() {
 
       {err && <div className="text-red-600 mb-4 text-sm">Erreur : {err}</div>}
 
+      {/* Onboarding intégré (BRIEF § 3) : huit étapes cochées d'après les données réelles. */}
+      <Onboarding avatars={avatars} content={content} />
+
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatTile label="Avatars" value={avatars.length} />
-        <StatTile label="Contenus cette semaine" value={computed.week} delta={weekDelta === 0 ? "= vs sem. passée" : `${weekDelta > 0 ? "+" : "−"}${Math.abs(weekDelta)} vs sem. passée`} />
-        <StatTile label="À valider" value={computed.review.length} tone={computed.review.length > 0 ? "amber" : null} />
-        <StatTile label="En ligne" value={computed.live} />
-      </div>
+      {(() => {
+        const hasBalance = balance != null && (balance.credits != null || balance.balance_usd != null);
+        return (
+          <div className={`grid grid-cols-2 ${hasBalance ? "lg:grid-cols-5" : "lg:grid-cols-4"} gap-4 mb-6`}>
+            <StatTile label="Avatars" value={avatars.length} />
+            <StatTile label="Contenus cette semaine" value={computed.week} delta={weekDelta === 0 ? "= vs sem. passée" : `${weekDelta > 0 ? "+" : "−"}${Math.abs(weekDelta)} vs sem. passée`} />
+            <StatTile label="À valider" value={computed.review.length} tone={computed.review.length > 0 ? "amber" : null} />
+            <StatTile label="En ligne" value={computed.live} />
+            {hasBalance && (
+              <StatTile
+                label="Crédits PiAPI"
+                value={balance!.credits != null ? balance!.credits.toLocaleString("fr-FR") : `${balance!.balance_usd!.toFixed(2)} $`}
+                delta={balance!.credits != null && balance!.balance_usd != null ? `≈ ${balance!.balance_usd.toFixed(2)} $ de vidéos Seedance` : "crédits Seedance"}
+                tone={(balance!.balance_usd ?? 99) < 5 ? "amber" : null}
+              />
+            )}
+          </div>
+        );
+      })()}
 
       <div className="grid lg:grid-cols-[1fr_320px] gap-6 items-start">
         {/* ── Colonne principale ── */}
@@ -159,6 +180,36 @@ export function Dashboard() {
               ))}
             </div>
           </div>
+
+          {/* Utilisation API Seedance : coûts réels facturés par PiAPI */}
+          {history && history.items.length > 0 && (
+            <div className="card p-5">
+              <div className="flex items-baseline justify-between mb-1">
+                <h2 className="font-bold text-ink">Utilisation API (Seedance)</h2>
+                <span className="text-xs text-slate-400">{history.total_tasks} génération{history.total_tasks > 1 ? "s" : ""} au total</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center my-4">
+                <div><div className="text-lg font-semibold text-ink">{history.totals.today.toFixed(2)} $</div><div className="text-xs text-slate-400">aujourd'hui</div></div>
+                <div><div className="text-lg font-semibold text-ink">{history.totals.week.toFixed(2)} $</div><div className="text-xs text-slate-400">7 jours</div></div>
+                <div><div className="text-lg font-semibold text-ink">{history.totals.month.toFixed(2)} $</div><div className="text-xs text-slate-400">30 jours</div></div>
+              </div>
+              <div className="space-y-1">
+                {history.items.slice(0, 8).map((h) => {
+                  const model = h.model.replace("-less-restriction", "").replace("seedance-2-", "Seedance ").replace(/^Seedance $/, "Seedance Pro");
+                  const ok = h.status === "finished" || h.status === "completed" || h.status === "success";
+                  return (
+                    <div key={h.task_id} className="flex items-center gap-2 text-xs py-1 border-b border-slate-50 last:border-0">
+                      <span className="text-slate-400 tabular-nums shrink-0 w-24">{new Date(h.created_at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                      <span className="text-slate-600 capitalize truncate">{model}</span>
+                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] shrink-0 ${ok ? "bg-green-50 text-green-700" : h.status === "failed" ? "bg-rose-50 text-rose-600" : "bg-slate-100 text-slate-500"}`}>{ok ? "ok" : h.status}</span>
+                      {h.video_url && <a href={h.video_url} target="_blank" rel="noreferrer" className="text-accent hover:underline shrink-0">voir</a>}
+                      <span className="ml-auto font-medium text-ink tabular-nums shrink-0">{h.cost_usd.toFixed(2)} $</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Équilibre éditorial */}
           <div className="card p-5">
