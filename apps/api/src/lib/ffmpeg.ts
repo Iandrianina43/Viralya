@@ -326,9 +326,12 @@ export async function assembleHybrid(
         if (voice) await download(String(p.voiceUrl), voice);
         const voiceSec = voice ? p.voiceSeconds ?? (await probe(voice)).seconds : 0;
         const still = join(dir, `still${i}.mp4`);
-        await kenBurns(p.imageUrl, Math.max(3, voiceSec + 0.5), still, dir, `still${i}`);
-        if (voice) await ff(["-y", "-i", still, "-i", voice, "-filter_complex", `[0:v]${V_NORM}[v];[1:a]apad[a]`, "-map", "[v]", "-map", "[a]", "-shortest", ...ENC, out]);
-        else await ff(["-y", "-i", still, "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100", "-filter_complex", `[0:v]${V_NORM}[v]`, "-map", "[v]", "-map", "1:a", "-shortest", ...ENC, out]);
+        const len = Math.max(3, voiceSec + 0.5);
+        await kenBurns(p.imageUrl, len, still, dir, `still${i}`);
+        // Durée bornée par -t : « apad » + « -shortest » ne s'arrêtait jamais (ffmpeg à 100 % pendant 10 min, incident du 6 sept.).
+        const dur = len.toFixed(2);
+        if (voice) await ff(["-y", "-i", still, "-i", voice, "-filter_complex", `[0:v]${V_NORM}[v];[1:a]apad=whole_dur=${dur}[a]`, "-map", "[v]", "-map", "[a]", "-t", dur, ...ENC, out]);
+        else await ff(["-y", "-i", still, "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100", "-filter_complex", `[0:v]${V_NORM}[v]`, "-map", "[v]", "-map", "1:a", "-t", dur, ...ENC, out]);
       } else {
       await download(p.clipUrl, clip);
       const info = await probe(clip);
