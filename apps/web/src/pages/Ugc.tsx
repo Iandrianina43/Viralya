@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type Avatar, type UgcBeat, type UgcCampaign, type UgcCampaignInput, type UgcEstimate, type UgcVariant } from "../api";
 import { ConfirmModal } from "../components/Modal";
-import { Button, useToast } from "../components/ui";
+import { Button, useToast, SkeletonCard } from "../components/ui";
 
 // ─────────────────────────────────────────────────────────────
 // CAMPAGNES UGC (BRIEF § 12, 14) — « cette influenceuse doit présenter ce produit ».
@@ -38,7 +38,8 @@ export function Ugc() {
   const [resolution, setResolution] = useState<"720p" | "1080p">("720p");
   const [err, setErr] = useState<string | null>(null);
 
-  const loadList = useCallback(() => api.listCampaigns().then((r) => setCampaigns(r.campaigns)).catch((e) => setErr(String((e as Error).message ?? e))), []);
+  const [loading, setLoading] = useState(true);
+  const loadList = useCallback(() => api.listCampaigns().then((r) => setCampaigns(r.campaigns)).catch((e) => setErr(String((e as Error).message ?? e))).finally(() => setLoading(false)), []);
   useEffect(() => { void loadList(); api.listAvatars().then((r) => setAvatars(r.avatars.filter((a) => a.status !== "draft"))).catch(() => {}); }, [loadList]);
   useEffect(() => {
     if (!id) { setCurrent(null); return; }
@@ -255,7 +256,8 @@ export function Ugc() {
               </div>
             );
           })}
-          {!campaigns.length && !creating && <div className="card p-10 text-center text-sm text-slate-500 md:col-span-2">Aucune campagne. Crée la première : un produit, une marque, tes influenceurs, et le système écrit toutes les variantes.</div>}
+          {loading && !campaigns.length && [0, 1].map((i) => <SkeletonCard key={`sk-${i}`} media={false} />)}
+          {!loading && !campaigns.length && !creating && <div className="card p-10 text-center text-sm text-slate-500 md:col-span-2">Aucune campagne. Crée la première : un produit, une marque, tes influenceurs, et le système écrit toutes les variantes.</div>}
         </div>
       )}
       <ConfirmModal open={!!confirmAct} title={confirmAct?.title ?? ""} message={confirmAct?.message ?? ""} danger={confirmAct?.danger} confirmLabel={confirmAct?.confirmLabel ?? "Confirmer"}

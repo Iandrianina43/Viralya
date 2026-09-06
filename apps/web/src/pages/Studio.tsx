@@ -13,6 +13,7 @@ import { Universe } from "../components/Universe";
 import { VlogWizard } from "../components/VlogWizard";
 
 import { errMsg } from "../lib/errMsg";
+import { Skeleton, SkeletonGrid, SkeletonList, SkeletonStats } from "../components/ui";
 // Mappe le statut brut d'un content_item vers un libellé + couleur lisibles.
 function statusBadge(status: string): { label: string; cls: string } {
   if (status === "needs_review") return { label: "à valider", cls: "bg-amber-100 text-amber-700" };
@@ -207,7 +208,16 @@ export function Studio() {
   const allReady = ready.every((r) => r.ok);
 
   if (err && !avatar) return <div className="text-red-600 text-sm">Erreur : {err}</div>;
-  if (!avatar) return <div className="text-slate-400 text-sm">Chargement du studio…</div>;
+  if (!avatar) {
+    return (
+      <div className="space-y-5" aria-busy="true">
+        <div className="flex items-center gap-4"><Skeleton className="w-16 h-16 rounded-2xl" /><div className="flex-1"><Skeleton className="h-6 w-1/3 mb-2" /><Skeleton className="h-3 w-1/2" /></div></div>
+        <SkeletonStats n={3} />
+        <SkeletonGrid cards={4} media={false} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" />
+        <SkeletonList rows={3} />
+      </div>
+    );
+  }
 
   return (
     <div>

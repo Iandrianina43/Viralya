@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth";
 import { MediaViewerProvider } from "./components/MediaViewer";
-import { ToastProvider } from "./components/ui";
+import { ToastProvider, TopLoader } from "./components/ui";
 import { AvatarEditor } from "./pages/AvatarEditor";
 import { Avatars } from "./pages/Avatars";
 import { Bible } from "./pages/Bible";
@@ -199,6 +199,7 @@ function Shell() {
       )}
 
       <div className="flex-1 flex flex-col overflow-hidden">
+        <TopLoader />
         <Topbar onMenu={() => setDrawer(true)} />
         <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-8 sm:py-7">
           <div className="max-w-6xl mx-auto">

@@ -1,5 +1,6 @@
 // L'API est servie sous /api (le front occupe les mêmes chemins en production).
 // Chaque appel porte la session (Bearer) et l'organisation active (x-org-id).
+import { beginRequest, endRequest } from "./lib/loading";
 import { authHeaders, getRefreshToken, setRefreshToken, setToken, signalUnauthorized } from "./lib/authToken";
 
 // En production, le front et l'API sont servis par Express sur le même domaine.
@@ -228,7 +229,13 @@ export interface DraftBody { title: string; messages: ChatMessage[]; fiche: Avat
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { "content-type": "application/json", ...authHeaders() };
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) } });
+  beginRequest();
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...init, headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) } });
+  } finally {
+    endRequest();
+  }
   // Jeton expiré (1 h) : on le renouvelle une fois avec le refresh token, puis on rejoue l'appel.
   if (res.status === 401 && !path.startsWith("/auth/")) {
     const retried = (init?.headers as Record<string, string> | undefined)?.["x-session-retry"] === "1";

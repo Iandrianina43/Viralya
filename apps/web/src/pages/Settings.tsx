@@ -5,6 +5,7 @@ import { errMsg } from "../lib/errMsg";
 import { useAuth } from "../auth";
 import { ConfirmModal } from "../components/Modal";
 
+import { Skeleton, SkeletonGrid } from "../components/ui";
 const field = "w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent transition";
 
 function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
@@ -327,7 +328,7 @@ export function Settings() {
                 </div>
               )}
             </div>
-          ) : <div className="text-sm text-slate-400">{billingMsg ?? "Chargement…"}</div>}
+          ) : billingMsg ? <div className="text-sm text-slate-400">{billingMsg}</div> : <div aria-busy="true"><Skeleton className="h-4 w-1/2 mb-3" /><Skeleton className="h-2 w-full mb-4" /><SkeletonGrid cards={3} media={false} className="grid sm:grid-cols-3 gap-2" /></div>}
         </Section>
 
         {/* Admin : utilisateurs */}

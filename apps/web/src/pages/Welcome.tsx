@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { markWelcomeSeen, useJourney } from "../lib/journey";
 
+import { Skeleton } from "../components/ui";
 // ─────────────────────────────────────────────────────────────
 // GUIDE DE DÉMARRAGE (BRIEF § 3) — le parcours complet en huit étapes, chacune expliquée
 // simplement, avec le bouton pour aller le faire, et cochée dès que c'est fait.
@@ -41,7 +42,7 @@ export function Welcome() {
           <p className="text-sm text-slate-500 mt-1 max-w-2xl">Tu crées un influenceur IA, tu construis son univers, puis Viralya écrit son calendrier, génère ses contenus, te les fait valider, monte les vidéos et publie. Huit étapes, toujours dans cet ordre.</p>
         </div>
         <div className="text-right">
-          <div className="text-2xl font-bold text-ink leading-none">{journey.done}<span className="text-slate-300">/{journey.steps.length}</span></div>
+          {journey.loading ? <Skeleton className="h-7 w-14 ml-auto" /> : <div className="text-2xl font-bold text-ink leading-none">{journey.done}<span className="text-slate-300">/{journey.steps.length}</span></div>}
           <div className="text-xs text-slate-500">étapes faites</div>
         </div>
       </div>

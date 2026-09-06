@@ -195,9 +195,23 @@ export async function listUsage(orgId: string, limit = 60): Promise<Array<{ id: 
 
 // ── Stripe ────────────────────────────────────────────────────
 
+/** Traduit une erreur Stripe en message lisible (400) au lieu d'une erreur interne opaque. */
+async function stripeCall<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    const e = err as { type?: string; message?: string; statusCode?: number };
+    logger.warn("stripe_error", { type: e.type, err: String(e.message ?? err).slice(0, 200) });
+    if (e.type === "StripeAuthenticationError" || /invalid api key/i.test(String(e.message))) {
+      throw new HttpError(400, "Paiement indisponible : la clé Stripe configurée sur le serveur est refusée par Stripe (clé d'exemple ou incomplète). Remplace STRIPE_SECRET_KEY par la vraie clé secrète du tableau de bord Stripe.");
+    }
+    throw new HttpError(400, `Stripe : ${String(e.message ?? "erreur inconnue").slice(0, 200)}`);
+  }
+}
+
 async function ensureCustomer(org: OrgBilling, email?: string | null): Promise<string> {
   if (org.stripe_customer_id) return org.stripe_customer_id;
-  const customer = await stripe().customers.create({ name: org.name, ...(email ? { email } : {}), metadata: { org_id: org.id } });
+  const customer = await stripeCall(() => stripe().customers.create({ name: org.name, ...(email ? { email } : {}), metadata: { org_id: org.id } }));
   await supabase.from("organizations").update({ stripe_customer_id: customer.id, ...(email ? { billing_email: email } : {}) }).eq("id", org.id);
   return customer.id;
 }
@@ -209,7 +223,7 @@ export async function createCheckout(orgId: string, planCode: string, opts: { em
   if (!plan) throw new HttpError(400, "Forfait inconnu.");
   const org = await orgRow(orgId);
   const customer = await ensureCustomer(org, opts.email);
-  const session = await stripe().checkout.sessions.create({
+  const session = await stripeCall(() => stripe().checkout.sessions.create({
     mode: "subscription",
     customer,
     line_items: [
@@ -230,7 +244,7 @@ export async function createCheckout(orgId: string, planCode: string, opts: { em
     client_reference_id: orgId,
     metadata: { org_id: orgId, plan_code: plan.code },
     subscription_data: { metadata: { org_id: orgId, plan_code: plan.code } },
-  });
+  }));
   if (!session.url) throw new Error("Stripe : session sans URL");
   return session.url;
 }
@@ -240,7 +254,7 @@ export async function createPortal(orgId: string, returnUrl: string): Promise<st
   if (!stripeConfigured()) throw new HttpError(400, "Stripe n'est pas configuré sur ce serveur.");
   const org = await orgRow(orgId);
   if (!org.stripe_customer_id) throw new HttpError(400, "Aucun abonnement à gérer pour cet espace.");
-  const session = await stripe().billingPortal.sessions.create({ customer: org.stripe_customer_id, return_url: returnUrl });
+  const session = await stripeCall(() => stripe().billingPortal.sessions.create({ customer: org.stripe_customer_id!, return_url: returnUrl }));
   return session.url;
 }
 

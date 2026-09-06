@@ -6,6 +6,7 @@ import { AvatarPhoto } from "../components/AvatarPhoto";
 import { ConfirmModal } from "../components/Modal";
 
 import { errMsg } from "../lib/errMsg";
+import { SkeletonCard } from "../components/ui";
 const STATUS_FR: Record<string, string> = { active: "actif", draft: "brouillon", paused: "en pause" };
 
 export function Avatars() {
@@ -18,9 +19,12 @@ export function Avatars() {
   const [confirmDraft, setConfirmDraft] = useState<DraftSummary | null>(null);
   const [confirmAvatar, setConfirmAvatar] = useState<Avatar | null>(null);
 
+  const [loading, setLoading] = useState(true);
   const load = () => {
-    api.listAvatars().then((r) => setAvatars(r.avatars)).catch((e) => setErr(errMsg(e)));
-    api.listDrafts().then((r) => setDrafts(r.drafts)).catch(() => {});
+    void Promise.allSettled([
+      api.listAvatars().then((r) => setAvatars(r.avatars)).catch((e) => setErr(errMsg(e))),
+      api.listDrafts().then((r) => setDrafts(r.drafts)).catch(() => {}),
+    ]).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
 
@@ -118,7 +122,8 @@ export function Avatars() {
           </div>
         ))}
 
-        {avatars.length === 0 && drafts.length === 0 && !err && (
+        {loading && [0, 1, 2].map((i) => <SkeletonCard key={`sk-${i}`} />)}
+        {!loading && avatars.length === 0 && drafts.length === 0 && !err && (
           <div className="card p-10 text-center col-span-full">
             <div className="text-4xl mb-3">✨</div>
             <div className="font-semibold text-ink">Aucun avatar pour l'instant</div>

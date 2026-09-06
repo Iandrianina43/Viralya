@@ -1,5 +1,6 @@
 import { AlertTriangle, Check, Inbox, Loader2, RefreshCw, X } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { LOADING_EVENT, inflightCount } from "../lib/loading";
 
 // ─────────────────────────────────────────────────────────────
 // Composants de base du système de design Viralya (phase 0).
@@ -117,6 +118,71 @@ export function ProgressBar({ value, tone = "accent", label }: { value: number; 
 // ── Squelette de chargement ──────────────────────────────────
 export function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-rule-soft ${className}`} aria-hidden="true" />;
+}
+
+/** Lignes de texte fantômes (largeurs variées pour un rendu naturel). */
+export function SkeletonLines({ n = 3, className = "" }: { n?: number; className?: string }) {
+  const widths = ["w-11/12", "w-4/5", "w-3/5", "w-2/3", "w-1/2"];
+  return (
+    <div className={`space-y-2 ${className}`} aria-hidden="true">
+      {Array.from({ length: n }).map((_, i) => <Skeleton key={i} className={`h-3 ${widths[i % widths.length]}`} />)}
+    </div>
+  );
+}
+
+/** Carte fantôme (vignette + titre + lignes). */
+export function SkeletonCard({ className = "", media = true }: { className?: string; media?: boolean }) {
+  return (
+    <div className={`card p-4 ${className}`} aria-hidden="true">
+      {media && <Skeleton className="h-36 w-full mb-3" />}
+      <Skeleton className="h-4 w-2/3 mb-2" />
+      <SkeletonLines n={2} />
+    </div>
+  );
+}
+
+export function SkeletonGrid({ cards = 6, media = true, className = "grid gap-4 sm:grid-cols-2 lg:grid-cols-3" }: { cards?: number; media?: boolean; className?: string }) {
+  return <div className={className} aria-hidden="true">{Array.from({ length: cards }).map((_, i) => <SkeletonCard key={i} media={media} />)}</div>;
+}
+
+export function SkeletonList({ rows = 4, height = "h-[72px]" }: { rows?: number; height?: string }) {
+  return <div className="space-y-2" aria-hidden="true">{Array.from({ length: rows }).map((_, i) => <Skeleton key={i} className={`${height} w-full`} />)}</div>;
+}
+
+export function SkeletonStats({ n = 4 }: { n?: number }) {
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" aria-hidden="true">
+      {Array.from({ length: n }).map((_, i) => (
+        <div key={i} className="card p-4"><Skeleton className="h-3 w-1/2 mb-3" /><Skeleton className="h-7 w-1/3" /></div>
+      ))}
+    </div>
+  );
+}
+
+// ── Barre de chargement globale (appels API en vol) ──────────
+// Apparaît après 200 ms (pas de clignotement sur les appels rapides), disparaît quand tout est revenu.
+export function TopLoader() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    let timer: number | null = null;
+    const update = () => {
+      const active = inflightCount() > 0;
+      if (active) {
+        if (timer == null) timer = window.setTimeout(() => { setVisible(true); timer = null; }, 200);
+      } else {
+        if (timer != null) { window.clearTimeout(timer); timer = null; }
+        setVisible(false);
+      }
+    };
+    window.addEventListener(LOADING_EVENT, update);
+    update();
+    return () => { window.removeEventListener(LOADING_EVENT, update); if (timer != null) window.clearTimeout(timer); };
+  }, []);
+  return (
+    <div className={`fixed top-0 left-0 right-0 h-[3px] z-[60] pointer-events-none transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0"}`} role="progressbar" aria-hidden={!visible} aria-label="Chargement">
+      <div className="top-loader-bar h-full w-1/3 bg-accent rounded-r-full shadow-[0_0_8px_rgba(0,0,0,0.15)]" />
+    </div>
+  );
 }
 
 // ── Toasts ───────────────────────────────────────────────────

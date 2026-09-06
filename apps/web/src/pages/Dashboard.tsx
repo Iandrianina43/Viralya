@@ -7,6 +7,7 @@ import { AvatarPhoto } from "../components/AvatarPhoto";
 import { MediaButton } from "../components/MediaViewer";
 import { Onboarding } from "../components/Onboarding";
 
+import { Skeleton, SkeletonList, SkeletonStats } from "../components/ui";
 // ─────────────────────────────────────────────────────────────
 // Dashboard — l'état de la plateforme en un coup d'œil.
 // Palette graphique validée (contraste + daltonisme) :
@@ -43,13 +44,17 @@ export function Dashboard() {
   const [err, setErr] = useState<string | null>(null);
   const [hover, setHover] = useState<number | null>(null);
 
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
-    api.listAvatars().then((r) => setAvatars(r.avatars)).catch((e) => setErr(String(e.message ?? e)));
-    api.listContent().then((r) => setContent(r.content)).catch(() => {});
+    const jobs = [
+      api.listAvatars().then((r) => setAvatars(r.avatars)).catch((e) => setErr(String(e.message ?? e))),
+      api.listContent().then((r) => setContent(r.content)).catch((e) => setErr(String(e.message ?? e))),
+    ];
     if (user?.role === "admin") {
-      api.piapiBalance().then(setBalance).catch(() => {});
-      api.piapiHistory().then(setHistory).catch(() => {});
+      jobs.push(api.piapiBalance().then(setBalance).catch(() => {}), api.piapiHistory().then(setHistory).catch(() => {}));
     }
+    void Promise.allSettled(jobs).finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const avatarName = useMemo(() => new Map(avatars.map((a) => [a.id, a.name])), [avatars]);
@@ -110,6 +115,14 @@ export function Dashboard() {
       </div>
 
       {err && <div className="text-red-600 mb-4 text-sm">Erreur : {err}</div>}
+
+      {loading ? (
+        <div className="space-y-6" aria-busy="true">
+          <Skeleton className="h-24 w-full" />
+          <SkeletonStats />
+          <div className="grid lg:grid-cols-2 gap-4"><SkeletonList rows={3} /><SkeletonList rows={3} /></div>
+        </div>
+      ) : (<>
 
       {/* Onboarding intégré (BRIEF § 3) : huit étapes cochées d'après les données réelles. */}
       <Onboarding avatars={avatars} content={content} />
@@ -343,6 +356,7 @@ export function Dashboard() {
           </div>
         </div>
       </div>
+      </>)}
     </div>
   );
 }

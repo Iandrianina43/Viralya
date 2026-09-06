@@ -5,6 +5,7 @@ import { api, type MemoryEntry } from "../api";
 import { ConfirmModal } from "../components/Modal";
 
 import { errMsg } from "../lib/errMsg";
+import { SkeletonList } from "../components/ui";
 const KIND: Record<string, { label: string; color: string; icon: typeof Info }> = {
   fact: { label: "Fait", color: "bg-blue-100 text-blue-700", icon: Info },
   storyline: { label: "Histoire", color: "bg-purple-100 text-purple-700", icon: BookOpen },
@@ -20,7 +21,8 @@ export function Journal() {
   const [err, setErr] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState<MemoryEntry | null>(null);
 
-  const load = () => id && api.getMemory(id).then((r) => setEntries(r.memory)).catch((e) => setErr(errMsg(e)));
+  const [loading, setLoading] = useState(true);
+  const load = () => id && api.getMemory(id).then((r) => setEntries(r.memory)).catch((e) => setErr(errMsg(e))).finally(() => setLoading(false));
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
 
   const add = async () => {
@@ -69,7 +71,8 @@ export function Journal() {
             </div>
           );
         })}
-        {entries.length === 0 && !err && (
+        {loading && <SkeletonList rows={4} height="h-16" />}
+        {!loading && entries.length === 0 && !err && (
           <div className="card p-8 text-center text-slate-400 text-sm">Mémoire vide. L'avatar l'enrichit tout seul à chaque publication.</div>
         )}
       </div>

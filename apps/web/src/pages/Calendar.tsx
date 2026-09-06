@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, type Avatar, type AvatarLocation, type ContentPlan, type PlanEntry, type PlanEntryType } from "../api";
 import { ConfirmModal } from "../components/Modal";
-import { Button, useToast } from "../components/ui";
+import { Button, useToast, Skeleton } from "../components/ui";
 
 // ─────────────────────────────────────────────────────────────
 // CALENDRIER ÉDITORIAL (BRIEF § 10-11) — « Générer le calendrier du mois prochain ».
@@ -238,7 +238,13 @@ export function Calendar() {
 
           <div className="card overflow-hidden">
             <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">{DOW.map((d) => <div key={d} className="px-2 py-1.5">{d}</div>)}</div>
-            {loading ? <div className="p-10 text-center text-sm text-slate-400">Chargement…</div> : (
+            {loading ? (
+              <div className="grid grid-cols-7" aria-busy="true">
+                {Array.from({ length: 35 }).map((_, i) => (
+                  <div key={i} className="min-h-[96px] border-b border-r border-slate-100 p-1.5"><Skeleton className="h-3 w-5 mb-2" />{i % 3 === 0 && <Skeleton className="h-5 w-full mb-1" />}{i % 5 === 0 && <Skeleton className="h-5 w-4/5" />}</div>
+                ))}
+              </div>
+            ) : (
               <div className="grid grid-cols-7">
                 {grid.map((c, i) => (
                   <div key={i} className={`min-h-[96px] border-b border-r border-slate-100 p-1.5 ${c.day ? "" : "bg-slate-50/60"} ${c.day === today() ? "bg-orange-50/50" : ""}`}>
