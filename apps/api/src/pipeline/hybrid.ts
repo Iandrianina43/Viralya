@@ -394,6 +394,10 @@ export async function submitShot(ctx: ShotContext, shot: ShotState, say?: (msg: 
       // Campagne UGC : la photo du produit est la dernière référence, décrite dans le prompt.
       const product = ctx.item.payload.product as { name?: string; description?: string } | undefined;
       const productUrl = typeof ctx.item.payload.product_image_url === "string" ? ctx.item.payload.product_image_url : null;
+      // Prise unique (payload.single_take, ou plan parlé ≥ 12 s) : coupes internes entre 3-5 angles ;
+      // plans courts du format monté : plan continu.
+      const speech = shot.audio_seconds ?? shot.duration;
+      const cuts: "multi" | "none" = ctx.item.payload.cuts === "none" ? "none" : ctx.item.payload.cuts === "multi" || ctx.item.payload.single_take === true || speech >= 12 ? "multi" : "none";
       const prompt = buildSeedance25Prompt({
         mode: "talk",
         scene: scene ?? fallbackScene(shot),
@@ -402,6 +406,7 @@ export async function submitShot(ctx: ShotContext, shot: ShotState, say?: (msg: 
         city: ctx.refs.city,
         outfitDescription: ctx.outfit?.description_en ?? null,
         productDescription: product?.name ? `${product.name}${product.description ? `: ${String(product.description).slice(0, 160)}` : ""}` : null,
+        cuts,
       });
       const duration = clampDuration(Math.ceil((shot.audio_seconds ?? shot.duration) + 1.2), taskType);
       const taskId = await submitSeedanceSegment({

@@ -114,7 +114,8 @@ studioRouter.post(
       ...base,
       story,
       format: req.body?.format === "seedance" ? "seedance" : "hybrid",
-      singleTake: req.body?.single_take === true,
+      // Prise unique par défaut (recommandée) ; `single_take: false` = format monté en plans courts.
+      singleTake: req.body?.single_take !== false,
       durationSec: Math.max(10, Math.min(90, Number(req.body?.duration_sec ?? 30))),
       previousScenes: Array.isArray(req.body?.previous_scenes) ? (req.body.previous_scenes as VlogScene[]) : undefined,
       instruction: req.body?.instruction ? String(req.body.instruction) : undefined,
@@ -137,6 +138,8 @@ studioRouter.post(
       format: req.body?.format, videoModel: req.body?.video_model, resolution: req.body?.resolution,
       talkProvider: req.body?.talk_provider, talkMode: req.body?.talk_mode, ttsModel: req.body?.tts_model,
       subtitles: req.body?.subtitles === true, music: req.body?.music !== false,
+      // Prise unique par défaut ; le format monté (plans courts) est demandé explicitement.
+      singleTake: req.body?.single_take !== false,
       locationScopes: (req.body?.location_scopes ?? {}) as Record<string, "permanent" | "oneoff">,
     });
     res.status(202).json({ ok: true, job_id: r.jobId, content_item_id: r.itemId, estimated_cost_usd: r.estimate, format: r.format });

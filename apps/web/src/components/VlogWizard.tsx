@@ -57,6 +57,9 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
 
   // Étape 3
   const [duration, setDuration] = useState(30);
+  // Réalisation : prise unique (un rendu de 20-30 s, coupes internes entre angles — recommandé)
+  // ou montage en plans courts (plans parlés + plans de coupe rendus séparément).
+  const [singleTake, setSingleTake] = useState(true);
   const [scenes, setScenes] = useState<VlogScene[]>([]);
   const [sceneInstruction, setSceneInstruction] = useState("");
   const [openElements, setOpenElements] = useState<number | null>(null); // éditeur 8 éléments ouvert
@@ -171,7 +174,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
   const runScenes = async (opts: { instruction?: string } = {}) => {
     setErr(null); setBusy(true);
     try {
-      const r = await api.vlogScenes(avatarId, story, duration, { previousScenes: opts.instruction ? scenes : undefined, instruction: opts.instruction, format });
+      const r = await api.vlogScenes(avatarId, story, duration, { previousScenes: opts.instruction ? scenes : undefined, instruction: opts.instruction, format, singleTake });
       setScenes(r.scenes);
       setSceneInstruction("");
       setStep(2);
@@ -184,7 +187,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
       const production: VlogProduction = { title: meta.title, story, caption: meta.caption, hashtags: meta.hashtags, scenes };
       const chosen: Record<string, LocationScope> = {};
       decors.forEach((d) => { if (d.isNew) chosen[d.key] = d.scope; });
-      const r = await api.vlogProduce(avatarId, production, chosen, videoModel, resolution, { format, talkProvider });
+      const r = await api.vlogProduce(avatarId, production, chosen, videoModel, resolution, { format, talkProvider, singleTake });
       onLaunched(r.content_item_id, meta.title || "Vlog");
     } catch (e) { setErr(String(e)); setBusy(false); }
   };
@@ -262,6 +265,12 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
                 </div>
               </label>
 
+              <div className="flex flex-wrap items-center gap-2 pt-3 mt-1 text-xs">
+                <span className="text-slate-400">Réalisation</span>
+                <button onClick={() => setSingleTake(true)} className={`px-2.5 py-1.5 rounded-lg border ${singleTake ? "border-accent bg-accent text-white" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`} title="Un seul rendu de 20-30 s : même tenue, même voix, coupes internes entre 3-5 angles">Prise unique (recommandé)</button>
+                <button onClick={() => setSingleTake(false)} className={`px-2.5 py-1.5 rounded-lg border ${!singleTake ? "border-accent bg-accent text-white" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`} title="Plans parlés courts et plans de coupe rendus séparément, puis montés : plus de rythme, risque de ruptures entre plans">Montage en plans</button>
+                <span className="text-slate-400">{singleTake ? "un seul rendu Seedance 2.5, le modèle coupe lui-même entre les angles" : "chaque plan est un rendu séparé"}</span>
+              </div>
               <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                 <button onClick={() => setStep(0)} className="text-sm text-slate-500 hover:text-slate-700 flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" /> Retour</button>
                 <div className="flex items-center gap-3">
@@ -288,7 +297,9 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
       {step === 2 && (
         <div>
           <p className="text-sm text-slate-500 mb-3">
-            {format === "hybrid"
+            {format === "hybrid" && singleTake
+              ? <>Prise unique · {scenes[0]?.texte.split(/\s+/).filter(Boolean).length ?? 0} mots (≈ {Math.round((scenes[0]?.texte.split(/\s+/).filter(Boolean).length ?? 0) / 2.3)} s) · {scenes[0]?.shots.length ?? 0} angles. Modifie le texte si besoin, il sera dit d'une traite.</>
+              : format === "hybrid"
               ? <>{scenes.length} plan{scenes.length > 1 ? "s" : ""} montés · ~{scenes.reduce((a, s) => a + (s.duration_sec || 12), 0)}s. Plans parlés courts, plans de coupe entre deux, inserts photo pendant la parole. Modifie les textes si besoin.</>
               : <>{scenes.length} segment{scenes.length > 1 ? "s" : ""} · ~{scenes.reduce((a, s) => a + (s.duration_sec || 12), 0)}s en plan-séquence continu. Modifie les textes si besoin.</>}
           </p>

@@ -329,7 +329,7 @@ export async function produceEntry(entryId: string, opts: ProduceEntryOptions = 
     const scenes = await breakIntoScenes({ ...base, story: story.story, durationSec: 30, format: "hybrid", singleTake: true });
     if (entry.location_key && scenes[0] && !scenes[0].location_key) scenes[0].location_key = entry.location_key;
     const r = await launchProduction(entry.avatar_id, { ...story, scenes }, {
-      format: "hybrid", resolution: opts.resolution, talkMode: opts.talkMode, music: opts.music, subtitles: opts.subtitles,
+      format: "hybrid", singleTake: true, resolution: opts.resolution, talkMode: opts.talkMode, music: opts.music, subtitles: opts.subtitles,
       network: entry.network, ratioClass: entry.ratio_class,
       extraPayload: { plan_entry_id: entry.id, pillar: entry.pillar, arc: entry.arc },
       extraColumns: { plan_entry_id: entry.id },

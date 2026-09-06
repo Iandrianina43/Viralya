@@ -228,8 +228,15 @@ export function buildSeedance25Prompt(opts: {
   outfitDescription?: string | null;
   /** Produit UGC : nom + description (l'image est @imageN, dernière référence). */
   productDescription?: string | null;
+  /**
+   * "multi" (prise unique de 20-30 s) : le modèle COUPE entre 3-5 plans à l'intérieur du clip
+   * (angles différents, même personne et tenue) — le rythme d'un vrai Reel sans risque de rupture
+   * entre rendus séparés. "none" : plan continu sans coupe (plans courts du format monté).
+   */
+  cuts?: "multi" | "none";
 }): string {
   const { scene, refs } = opts;
+  const multi = opts.cuts === "multi";
   let n = 1;
   const sheetRef = refs.hasSheet ? `@image${++n}` : null;
   const locationRef = refs.hasLocationImage ? `@image${++n}` : null;
@@ -257,10 +264,16 @@ export function buildSeedance25Prompt(opts: {
       ? `Action: she talks to the handheld phone camera like a vlogger talking to a friend — ${scene.action}. Lively expression, natural varied hand gestures, eye contact with the lens.`
       : `Action: ${scene.action}. She does NOT talk to the camera in this shot (mouth relaxed, no lip movement): a French voice-over narrates.`,
   );
-  if (scene.shots.length) parts.push(`Timeline of this single continuous take: ${scene.shots.map((sh) => `${sh.t ? `${sh.t}: ` : ""}${sh.desc}`).join("; ")}.`);
+  if (scene.shots.length) {
+    parts.push(
+      multi
+        ? `Shot list — the video is EDITED with ${scene.shots.length} shots, cutting between angles on the beats of her speech (like a real short-form video): ${scene.shots.map((sh) => `${sh.t ? `${sh.t}: ` : ""}${sh.desc}`).join("; ")}. Every shot shows the same person, same outfit, same place and light; the speech continues seamlessly across cuts.`
+        : `Timeline of this single continuous take: ${scene.shots.map((sh) => `${sh.t ? `${sh.t}: ` : ""}${sh.desc}`).join("; ")}.`,
+    );
+  }
   const sceneBits = [opts.locationDescription, scene.scene_desc].filter(Boolean).join(" — ") || scene.scene_desc || opts.city || "an authentic lifestyle setting";
   parts.push(locationRef ? `Scene: the EXACT location shown in ${locationRef} (same walls, colors and layout) — ${sceneBits}.` : `Scene: ${sceneBits}.`);
-  parts.push(`Camera: ${scene.camera} — vertical 9:16, one continuous take, no cuts.`);
+  parts.push(multi ? `Camera: ${scene.camera} — vertical 9:16, handheld phone, ${scene.shots.length || 3}-${Math.max(scene.shots.length || 3, 4)} distinct shots with clean cuts, medium shot for the talking parts and a close-up when she shows something.` : `Camera: ${scene.camera} — vertical 9:16, one continuous take, no cuts.`);
   parts.push(`Lighting and style: ${scene.lighting}. ${BROLL_QUALITY}.`);
   const voice = refs.hasVoiceRef ? " — her voice timbre matches the reference voice @audio1" : "";
   parts.push(
@@ -268,7 +281,8 @@ export function buildSeedance25Prompt(opts: {
       ? `Audio: she speaks FRENCH naturally to the camera and says exactly: "${texte}"${voice}, accurate lip-sync; ${scene.audio_ambiance || "natural ambient sound of the location"} in the background, no music.`
       : `Audio: a French female voice-over narrates exactly: "${texte}"${voice}; ${scene.audio_ambiance || "natural ambient sound of the location"} in the background, no music.`,
   );
-  parts.push(`Constraints: ${[BASE_CONSTRAINTS, "no subtitles, no text on screen", scene.constraints].filter(Boolean).join(", ")}.`);
+  const base = multi ? BASE_CONSTRAINTS.replace(", one single uninterrupted take with NO cuts, no shot changes, no scene transitions", ", cuts allowed only between the listed shots, no scene transitions or effects") : BASE_CONSTRAINTS;
+  parts.push(`Constraints: ${[base, "no subtitles, no text on screen", scene.constraints].filter(Boolean).join(", ")}.`);
   return parts.join(" ");
 }
 
@@ -426,7 +440,7 @@ const SINGLE_TAKE_RULES = `RÈGLES — PLAN-SÉQUENCE UNIQUE (UNE seule vidéo d
 - Renvoie EXACTEMENT UNE scène : "mode":"talk", "duration_sec":30, "location_key" = le lieu unique de l'histoire.
 - "texte" = TOUT ce qu'elle dit pendant les 30 secondes, d'une traite : 50 à 65 mots MAXIMUM (≈ 2,3 mots par seconde, au-delà la fin est coupée). Elle raconte à une amie ce qui vient de lui arriver, dans l'ordre : 1) une phrase simple qui situe (où elle est, ce qu'elle fait), 2) ce qui s'est passé, 3) la chute ou la question finale.
 - "action" : ce qu'elle FAIT pendant qu'elle parle, en lien avec le récit (assise à la table, la carte en main, l'assiette arrive, elle goûte…).
-- "shots" : la timeline de la prise continue en 4 à 6 temps couvrant les 30 s ([{"t":"0-6s","desc":"..."}, …]) : caméra à la main qui la suit, ce qu'elle montre, qui entre dans le cadre (le serveur, l'assiette). Elle parle à la caméra pendant toute la prise. AUCUNE coupe.
+- "shots" : le DÉCOUPAGE en 3 à 5 plans à l'intérieur de la vidéo ([{"t":"0-7s","desc":"..."}, …]) couvrant les 30 s : un changement d'angle par temps fort du récit (plan moyen face caméra, gros plan sur ce qu'elle montre ou sur son visage, plan plus large avec le décor, retour face caméra pour la chute). Chaque "desc" (EN) dit l'angle ET ce qui se passe. Elle parle à la caméra pendant toute la vidéo ; même personne, même tenue, même lieu d'un plan à l'autre.
 - "inserts" : 0 à 2 illustrations (voir ci-dessus) ancrées sur des mots exacts du texte.
 - "camera", "lighting", "audio_ambiance", "constraints" : comme d'habitude (EN).
 

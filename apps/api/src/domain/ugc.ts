@@ -276,7 +276,7 @@ export async function produceVariant(orgId: string, variantId: string, opts: { r
     hashtags: variant.script.hashtags,
     scenes,
   }, {
-    format: "hybrid", resolution: opts.resolution, talkMode: opts.talkMode, music: opts.music ?? false, subtitles: false,
+    format: "hybrid", singleTake: true, resolution: opts.resolution, talkMode: opts.talkMode, music: opts.music ?? false, subtitles: false,
     network: "tiktok", ratioClass: "sale",
     extraPayload: {
       kind: "ugc", campaign_id: campaign.id, variant_id: variant.id, brand: campaign.brand, product, product_image_url: product.image_url ?? null,

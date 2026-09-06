@@ -194,7 +194,7 @@ export interface ShotState {
   qc?: { face_score: number | null; face_height?: number | null; verdict: string; note?: string } | null;
   cost_usd?: number; error?: string;
 }
-export interface ProduceOptions { format?: VideoFormat; talkProvider?: TalkProvider; talkMode?: TalkMode; subtitles?: boolean; music?: boolean }
+export interface ProduceOptions { format?: VideoFormat; talkProvider?: TalkProvider; talkMode?: TalkMode; subtitles?: boolean; music?: boolean; singleTake?: boolean }
 
 export interface ElevenVoice { voice_id: string; name: string; preview_url: string | null; description: string; gender: string | null; language: string | null }
 export interface ChatResult { reply: string; draft: AvatarDraft; ready: boolean }
@@ -385,10 +385,10 @@ export const api = {
   },
 
   // Étape 2 : découpage en scènes (durée cible + affinage).
-  vlogScenes: (avatarId: string, story: string, durationSec: number, opts?: { previousScenes?: VlogScene[]; instruction?: string; format?: VideoFormat }) =>
+  vlogScenes: (avatarId: string, story: string, durationSec: number, opts?: { previousScenes?: VlogScene[]; instruction?: string; format?: VideoFormat; singleTake?: boolean }) =>
     req<{ scenes: VlogScene[] }>("/studio/vlog/scenes", {
       method: "POST",
-      body: JSON.stringify({ avatar_id: avatarId, story, duration_sec: durationSec, previous_scenes: opts?.previousScenes, instruction: opts?.instruction, format: opts?.format ?? "hybrid" }),
+      body: JSON.stringify({ avatar_id: avatarId, story, duration_sec: durationSec, previous_scenes: opts?.previousScenes, instruction: opts?.instruction, format: opts?.format ?? "hybrid", single_take: opts?.singleTake !== false }),
     }),
 
   // Étape 3 : lancer la production Seedance (modèle + résolution choisis).
@@ -402,7 +402,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({
         avatar_id: avatarId, production, location_scopes: locationScopes, video_model: videoModel, resolution,
-        format: opts.format ?? "hybrid", talk_provider: opts.talkProvider, talk_mode: opts.talkMode, subtitles: opts.subtitles, music: opts.music,
+        format: opts.format ?? "hybrid", talk_provider: opts.talkProvider, talk_mode: opts.talkMode, subtitles: opts.subtitles, music: opts.music, single_take: opts.singleTake !== false,
       }),
     }),
 

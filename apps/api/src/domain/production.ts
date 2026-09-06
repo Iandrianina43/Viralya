@@ -25,6 +25,8 @@ export interface LaunchOptions {
   music?: boolean;
   network?: string;
   ratioClass?: "value" | "proof" | "sale";
+  /** Prise unique (une scène de 20-30 s, coupes internes entre angles) — défaut du produit. */
+  singleTake?: boolean;
   locationScopes?: Record<string, LocationScope>;
   /** Champs supplémentaires du payload (kind: "ugc", plan_entry_id, product_image_url…). */
   extraPayload?: Record<string, unknown>;
@@ -99,7 +101,7 @@ export async function launchProduction(avatarId: string, production: VlogProduct
         theme: title,
         production,
         format, video_model: taskType, resolution,
-        ...(format === "hybrid" ? { talk_provider: talkProvider, talk_mode: talkMode, tts_model: ttsModel, subtitles, music } : {}),
+        ...(format === "hybrid" ? { talk_provider: talkProvider, talk_mode: talkMode, tts_model: ttsModel, subtitles, music, single_take: opts.singleTake !== false, cuts: opts.singleTake !== false ? "multi" : "none" } : {}),
         caption: production.caption ?? "",
         hashtags: production.hashtags ?? [],
         script: production.scenes.map((s) => s.texte).join(" "),
