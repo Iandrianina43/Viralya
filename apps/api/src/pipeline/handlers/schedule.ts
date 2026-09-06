@@ -32,6 +32,6 @@ export async function scheduleJob(job: JobRow): Promise<void> {
   await supabase.from("plan_entries").update({ status: "scheduled", updated_at: new Date().toISOString() }).eq("content_item_id", id);
   // Publication (simulée ou réelle) à l'heure prévue — la file maison porte le délai.
   const delay = Math.max(0, Date.parse(scheduledAt) - Date.now());
-  await enqueue("publish", { content_item_id: id, avatar_id: item.avatar_id }, { contentItemId: id, runAfterMs: delay, avatarId: item.avatar_id, label: item.title ?? "Publication" });
+  await enqueue("publish", { content_item_id: id, avatar_id: item.avatar_id }, { contentItemId: id, runAfterMs: delay, avatarId: item.avatar_id, label: item.title ?? "Publication", maxAttempts: 1 });
   logger.info("content_scheduled", { itemId: id, network: item.network, scheduledAt });
 }

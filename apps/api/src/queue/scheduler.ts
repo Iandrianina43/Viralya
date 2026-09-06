@@ -39,8 +39,21 @@ async function claimTask(key: string, everyMs: number, workerId: string): Promis
   return !!upd?.length;
 }
 
+/** Contenus « en cours » depuis plus de 45 min sans aucun job actif (crash entre l'insert et l'enqueue) → échec explicite. */
+async function failOrphans(): Promise<void> {
+  const since = new Date(Date.now() - 45 * 60_000).toISOString();
+  const { data: items } = await supabase.from("content_items").select("id").in("status", ["queued", "generating"]).lt("created_at", since).limit(20);
+  for (const it of items ?? []) {
+    const { count } = await supabase.from("jobs").select("id", { count: "exact", head: true }).eq("content_item_id", it.id).in("status", ["pending", "running"]);
+    if ((count ?? 0) > 0) continue;
+    await supabase.from("content_items").update({ status: "failed", error: "Production interrompue (aucun job actif) — relance-la depuis le Task Center." }).eq("id", it.id);
+    logger.warn("content_orphan_failed", { itemId: it.id });
+  }
+}
+
 export async function schedulerTick(workerId: string): Promise<void> {
   await heartbeat(workerId);
+  await failOrphans().catch((err) => logger.warn("orphan_sweep_failed", { err: String((err as Error)?.message ?? err) }));
   if (await claimTask(AUTO_KEY, AUTO_EVERY_MS, workerId)) {
     try {
       const { produceDueEntries } = await import("../domain/calendar");

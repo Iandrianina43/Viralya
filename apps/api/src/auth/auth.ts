@@ -66,6 +66,11 @@ export function invalidateToken(token: string): void {
   tokenCache.delete(token);
 }
 
+/** Bannissement, suppression, changement de mot de passe : toutes les sessions en cache de l'utilisateur tombent. */
+export function invalidateUserTokens(userId: string): void {
+  for (const [k, v] of tokenCache) if (v.user.id === userId) tokenCache.delete(k);
+}
+
 export const authRequired: RequestHandler = async (req, res, next) => {
   const header = req.headers.authorization ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
@@ -92,9 +97,10 @@ export const adminRequired: RequestHandler = (req, res, next) => {
 
 // ── Limiteur simple (anti force-brute sur login/signup) ──────
 const attempts = new Map<string, number[]>();
-export function rateLimit(maxPerWindow: number, windowMs: number): RequestHandler {
+export function rateLimit(maxPerWindow: number, windowMs: number, scope: "path" | "ip" = "path"): RequestHandler {
   return (req, res, next) => {
-    const key = `${req.path}:${req.ip ?? "?"}`;
+    const key = scope === "ip" ? `ip:${req.ip ?? "?"}` : `${req.path}:${req.ip ?? "?"}`;
+    if (attempts.size > 5000) for (const [k, v] of attempts) if (!v.some((t) => Date.now() - t < windowMs)) attempts.delete(k);
     const now = Date.now();
     const list = (attempts.get(key) ?? []).filter((t) => now - t < windowMs);
     if (list.length >= maxPerWindow) {

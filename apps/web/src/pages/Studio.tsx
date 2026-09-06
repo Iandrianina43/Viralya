@@ -7,11 +7,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, type Avatar, type ContentItem, type MemoryEntry, type VlogProduction } from "../api";
 import { AvatarPhoto } from "../components/AvatarPhoto";
-import { Modal } from "../components/Modal";
+import { ConfirmModal, Modal } from "../components/Modal";
 import { ProductionRoom } from "../components/ProductionRoom";
 import { Universe } from "../components/Universe";
 import { VlogWizard } from "../components/VlogWizard";
 
+import { errMsg } from "../lib/errMsg";
 // Mappe le statut brut d'un content_item vers un libellé + couleur lisibles.
 function statusBadge(status: string): { label: string; cls: string } {
   if (status === "needs_review") return { label: "à valider", cls: "bg-amber-100 text-amber-700" };
@@ -76,6 +77,7 @@ export function Studio() {
   const [wizardOpen, setWizardOpen] = useState(false);
   // Prix du clip rapide (preset = 1 segment de 15 s au modèle/résolution par défaut).
   const [quickClipCost, setQuickClipCost] = useState<number | null>(null);
+  const [pendingClip, setPendingClip] = useState<{ key: string; label: string } | null>(null);
   useEffect(() => {
     api.listVideoModels().then((r) => {
       const m = r.models.find((x) => x.id === r.default);
@@ -86,7 +88,7 @@ export function Studio() {
 
   const load = () => {
     if (!id) return;
-    api.getAvatar(id).then((r) => setAvatar(r.avatar)).catch((e) => setErr(String(e)));
+    api.getAvatar(id).then((r) => setAvatar(r.avatar)).catch((e) => setErr(errMsg(e)));
     api.listContent({ avatar_id: id }).then((r) => {
       setContent(r.content);
       // Suivi auto : reprend la production en cours (même après refresh).
@@ -113,7 +115,7 @@ export function Studio() {
       const r = await api.planDay(id);
       setMsg(`Contenu du jour lancé (job ${r.job_id.slice(0, 8)}…). Il apparaît ci-dessous d'ici ~1 min.`);
       setTimeout(load, 4000);
-    } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+    } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
   };
 
   // Moteur vlog complet : histoire streamée en direct → scènes → suivi live.
@@ -130,7 +132,7 @@ export function Studio() {
         onEnqueued: (cid) => setActiveGen({ id: cid, label, startedAt: Date.now() }),
       });
     } catch (e) {
-      setErr(String(e));
+      setErr(errMsg(e));
       setProd((p) => (p ? { ...p, streaming: false } : p));
     } finally { setClipBusy(null); }
   };
@@ -245,6 +247,9 @@ export function Studio() {
       {err && <div className="text-red-600 mb-4 text-sm">Erreur : {err}</div>}
 
       {/* Assistant de réalisation (mode piloté) */}
+      <ConfirmModal open={!!pendingClip} title={`Lancer « ${pendingClip?.label ?? ""} » ?`}
+        message={`Le réalisateur écrit l'histoire puis la vidéo est rendue tout de suite${quickClipCost != null ? ` (≈ ${quickClipCost.toFixed(2)} $)` : ""}. Le résultat attend ta validation avant toute publication.`}
+        confirmLabel="Lancer" onConfirm={() => { const c = pendingClip; setPendingClip(null); if (c) void genClip(c.key, c.label); }} onClose={() => setPendingClip(null)} />
       {wizardOpen && id && (
         <VlogWizard
           avatarId={id}
@@ -269,7 +274,7 @@ export function Studio() {
           item={genItem}
           onCancel={activeGen ? async () => {
             try { await api.cancelContent(activeGen.id); await load(); setMsg("Production annulée."); }
-            catch (e) { setErr(String(e)); }
+            catch (e) { setErr(errMsg(e)); }
           } : undefined}
           onRegenerateShot={async (idx, texte) => {
             const cid = genItem?.id ?? activeGen?.id;
@@ -279,7 +284,7 @@ export function Studio() {
               await api.regenerateShot(cid, idx, texte ? { texte } : {});
               setActiveGen({ id: cid, label: prod.presetLabel, startedAt: Date.now() });
               setMsg(`Plan ${idx + 1} relancé — la vidéo sera remontée à la fin.`);
-            } catch (e) { setErr(String(e)); }
+            } catch (e) { setErr(errMsg(e)); }
           }}
           onClose={() => { setProd(null); setActiveGen(null); setGenItem(null); }}
         />
@@ -350,12 +355,12 @@ export function Studio() {
                 const Icon = p.icon;
                 const on = clipBusy === p.key;
                 return (
-                  <button key={p.key} onClick={() => genClip(p.key, p.label)} disabled={!!clipBusy}
+                  <button key={p.key} onClick={() => setPendingClip({ key: p.key, label: p.label })} disabled={!!clipBusy}
                     className="text-left rounded-xl border border-slate-200 p-2.5 flex items-center gap-2.5 hover:border-accent hover:bg-accent/5 transition disabled:opacity-50">
                     <div className="w-8 h-8 rounded-lg bg-accent/10 text-accent flex items-center justify-center shrink-0"><Icon className="w-3.5 h-3.5" /></div>
                     <div className="min-w-0">
                       <div className="text-xs font-medium text-ink truncate">{p.label}</div>
-                      <div className="text-[10px] text-slate-400 truncate">{on ? "Lancement…" : quickClipCost != null ? `≈ ${quickClipCost.toFixed(2)} $ · sans validation` : "sans validation"}</div>
+                      <div className="text-[10px] text-slate-400 truncate">{on ? "Lancement…" : quickClipCost != null ? `≈ ${quickClipCost.toFixed(2)} $ · confirmation avant lancement` : "confirmation avant lancement"}</div>
                     </div>
                   </button>
                 );
@@ -511,7 +516,7 @@ export function Studio() {
                 setGenItem(it);
                 setProd({ presetLabel: label, story: production?.story ?? "", streaming: false, stepLabel: `Régénération du plan ${idx + 1}…`, production });
                 setActiveGen({ id: it.id, label, startedAt: Date.now() });
-              } catch (e) { setErr(String(e)); }
+              } catch (e) { setErr(errMsg(e)); }
             }}
           />
         )}

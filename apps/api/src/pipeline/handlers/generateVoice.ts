@@ -35,7 +35,7 @@ export async function generateVoiceJob(job: JobRow): Promise<void> {
   const log: Array<{ t: string; msg: string }> = Array.isArray(item.assets.log) ? (item.assets.log as never[]) : [];
   const say = (msg: string) => log.push({ t: new Date().toISOString(), msg });
 
-  const targets = shots.filter((s) => (only ? only.includes(s.idx) : s.phase === "voice") && s.texte.trim());
+  const targets = shots.filter((s) => (only ? only.includes(s.idx) : s.phase === "voice") && s.texte.trim() && !(s.audio_url && !only));
   if (!existing.length) say(`🎬 Production hybride : ${shots.length} plan(s) — ${shots.filter((s) => s.role === "talk").length} parlé(s), ${shots.filter((s) => s.role === "broll").length} b-roll`);
 
   let i = 0;
@@ -52,6 +52,7 @@ export async function generateVoiceJob(job: JobRow): Promise<void> {
     shot.duration = shot.role === "talk" ? Math.max(2, Math.ceil(tts.seconds + 0.3)) : clampDuration(Math.max(shot.duration, Math.ceil(tts.seconds + 0.5)));
     shot.phase = "waiting";
     say(`🎙️ ${shot.titre} : voix générée (${tts.seconds.toFixed(1)} s, ${tts.model})`);
+    await mergeAssets(id, { shots, log }); // une relance reprend après la dernière voix payée
     // Prise unique : Seedance 2.5 s'arrête à 30 s, la fin d'un texte trop long serait coupée.
     if (shot.role === "talk" && tts.seconds > 28.5) say(`⚠️ ${shot.titre} : texte trop long (${tts.seconds.toFixed(0)} s de parole pour 30 s max) — raccourcis-le et régénère, sinon la fin sera coupée`);
     logger.info("hybrid_voice_done", { itemId: id, idx: shot.idx, seconds: tts.seconds, model: tts.model });

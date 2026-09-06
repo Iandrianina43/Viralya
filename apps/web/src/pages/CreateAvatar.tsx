@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type AvatarDraft, type ChatMessage, type ElevenVoice, type PortraitSpec } from "../api";
 import { Loader, LoaderTile } from "../components/Loader";
 
+import { errMsg } from "../lib/errMsg";
 const WELCOME =
   "Salut ! 👋 Je suis là pour t'aider à créer ton influenceur IA de A à Z.\n\n" +
   "Décris-moi simplement le personnage que tu veux : son domaine/niche, un nom si tu en as un, " +
@@ -65,7 +66,7 @@ function DraftCard({ draft, ready }: { draft: AvatarDraft; ready: boolean }) {
     ["Voix", draft.eleven_voice_name || undefined],
   ];
   return (
-    <div className="w-72 shrink-0 card p-4 h-fit sticky top-2">
+    <div className="w-full lg:w-72 shrink-0 card p-4 h-fit lg:sticky lg:top-2">
       <div className="font-semibold text-ink mb-3">Fiche du personnage</div>
       {draft.ref_image_url && <img src={draft.ref_image_url} alt="visage" className="w-full rounded-xl mb-3 border border-slate-200" />}
       <div className="space-y-2">
@@ -131,7 +132,7 @@ export function CreateAvatar() {
           if (rec.fiche?.eleven_voice_id) setPhase("voice");
           else if (rec.fiche?.ref_image_url || (rec.fiche?.face_options ?? []).length) setPhase("face");
         })
-        .catch((e) => { setErr(String(e)); setMessages([{ role: "assistant", content: WELCOME }]); });
+        .catch((e) => { setErr(errMsg(e)); setMessages([{ role: "assistant", content: WELCOME }]); });
     } else {
       setMessages([{ role: "assistant", content: WELCOME }]);
     }
@@ -145,7 +146,7 @@ export function CreateAvatar() {
     setVoicesLoading(true);
     api.listElevenVoices()
       .then((r) => { setVoicesConfigured(r.configured); setVoices(r.voices); })
-      .catch((e) => setErr(String(e)))
+      .catch((e) => setErr(errMsg(e)))
       .finally(() => setVoicesLoading(false));
   }, [phase]);
 
@@ -159,7 +160,7 @@ export function CreateAvatar() {
         recordId.current = r.record.id;
         navigate(`/avatars/create/${r.record.id}`, { replace: true });
       }
-    } catch (e) { setErr(String(e)); } finally { setSaving(false); }
+    } catch (e) { setErr(errMsg(e)); } finally { setSaving(false); }
   };
 
   const runStream = async (history: ChatMessage[], curDraft: AvatarDraft) => {
@@ -175,7 +176,7 @@ export function CreateAvatar() {
       const merged: AvatarDraft = { ...res.draft, ref_image_url: curDraft.ref_image_url, face_options: curDraft.face_options, eleven_voice_id: curDraft.eleven_voice_id, eleven_voice_name: curDraft.eleven_voice_name };
       setMessages(finalMessages); setDraft(merged); setReady(res.ready);
       await saveDraft(finalMessages, merged, res.ready);
-    } catch (e) { setErr(String(e)); } finally { setLoading(false); }
+    } catch (e) { setErr(errMsg(e)); } finally { setLoading(false); }
   };
 
   const send = async () => {
@@ -195,7 +196,7 @@ export function CreateAvatar() {
       const nd: AvatarDraft = { ...draft, portrait_spec: r.spec };
       setDraft(nd);
       await saveDraft(messages, nd, ready);
-    } catch (e) { setErr(String(e)); } finally { setSpecLoading(false); }
+    } catch (e) { setErr(errMsg(e)); } finally { setSpecLoading(false); }
   };
 
   const genFace = async () => {
@@ -206,7 +207,7 @@ export function CreateAvatar() {
       const nd: AvatarDraft = { ...draft, portrait_spec: r.spec, face_options: [...(draft.face_options ?? []), r.imageUrl] };
       setDraft(nd);
       await saveDraft(messages, nd, ready);
-    } catch (e) { setErr(String(e)); } finally { setFaceLoading(false); }
+    } catch (e) { setErr(errMsg(e)); } finally { setFaceLoading(false); }
   };
 
   const selectFace = async (url: string) => {
@@ -234,12 +235,12 @@ export function CreateAvatar() {
     try {
       const r = await api.finalizeDraft(recordId.current);
       setCreatedAvatar({ id: r.avatar.id, name: r.avatar.name });
-    } catch (e) { setErr(String(e)); } finally { setCreating(false); }
+    } catch (e) { setErr(errMsg(e)); } finally { setCreating(false); }
   };
 
   const genFirst = async () => {
     if (!createdAvatar) return;
-    try { await api.planDay(createdAvatar.id); navigate("/content"); } catch (e) { setErr(String(e)); }
+    try { await api.planDay(createdAvatar.id); navigate("/content"); } catch (e) { setErr(errMsg(e)); }
   };
 
   const last = messages[messages.length - 1];
@@ -282,7 +283,7 @@ export function CreateAvatar() {
       <Stepper phase={phase} ready={ready} canCreate={canCreate} onGo={setPhase} />
       {err && <div className="text-red-600 mb-4 text-sm">Erreur : {err}</div>}
 
-      <div className="flex gap-6">
+      <div className="flex flex-col lg:flex-row gap-6">
         <div className="flex-1">
           {/* ── PERSONNAGE ── */}
           {phase === "persona" && (
@@ -383,7 +384,7 @@ export function CreateAvatar() {
               <p className="text-xs text-slate-400 mb-4">💡 Toutes ces voix sont multilingues — elles parlent français même si l'accent d'origine diffère. Le filtre « langue » = accent.</p>
 
               {voicesLoading && <Loader label="Chargement des voix…" />}
-              {!voicesLoading && !voicesConfigured && <div className="text-sm text-amber-600">Clé ElevenLabs non configurée dans le .env (ELEVENLABS_API_KEY).</div>}
+              {!voicesLoading && !voicesConfigured && <div className="text-sm text-amber-600">Le choix de la voix n'est pas disponible sur ce serveur (service vocal non activé) : contacte le support.</div>}
 
               {/* Filtres langue + genre */}
               {voices.length > 0 && (
@@ -432,7 +433,7 @@ export function CreateAvatar() {
           {phase === "review" && (
             <div className="card p-6">
               <div className="font-semibold text-ink text-lg mb-4">Récapitulatif</div>
-              <div className="flex gap-6">
+              <div className="flex flex-col lg:flex-row gap-6">
                 {draft.ref_image_url ? (
                   <img src={draft.ref_image_url} alt="visage" className="w-40 rounded-xl border border-slate-200" />
                 ) : (

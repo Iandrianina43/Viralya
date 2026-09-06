@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { api, type MemoryEntry } from "../api";
 import { ConfirmModal } from "../components/Modal";
 
+import { errMsg } from "../lib/errMsg";
 const KIND: Record<string, { label: string; color: string; icon: typeof Info }> = {
   fact: { label: "Fait", color: "bg-blue-100 text-blue-700", icon: Info },
   storyline: { label: "Histoire", color: "bg-purple-100 text-purple-700", icon: BookOpen },
@@ -19,18 +20,18 @@ export function Journal() {
   const [err, setErr] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState<MemoryEntry | null>(null);
 
-  const load = () => id && api.getMemory(id).then((r) => setEntries(r.memory)).catch((e) => setErr(String(e)));
+  const load = () => id && api.getMemory(id).then((r) => setEntries(r.memory)).catch((e) => setErr(errMsg(e)));
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
 
   const add = async () => {
     if (!id || summary.trim().length < 2) return;
     try { await api.addMemory(id, { kind, summary, status: kind === "storyline" ? "open" : "active" }); setSummary(""); await load(); }
-    catch (e) { setErr(String(e)); }
+    catch (e) { setErr(errMsg(e)); }
   };
   const doDelete = async () => {
     if (!id || !confirmDel) return;
     const mid = confirmDel.id; setConfirmDel(null);
-    try { await api.deleteMemory(id, mid); await load(); } catch (e) { setErr(String(e)); }
+    try { await api.deleteMemory(id, mid); await load(); } catch (e) { setErr(errMsg(e)); }
   };
 
   return (

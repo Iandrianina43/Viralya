@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api, type Avatar, type ElevenVoice } from "../api";
 import { AvatarPhoto } from "../components/AvatarPhoto";
 
+import { errMsg } from "../lib/errMsg";
 const NETWORKS = ["instagram", "tiktok", "youtube", "x", "facebook"];
 const field = "w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none transition";
 
@@ -34,7 +35,7 @@ export function AvatarEditor() {
   const [samplesBusy, setSamplesBusy] = useState(false);
 
   useEffect(() => {
-    if (id) api.getAvatar(id).then((r) => setForm(r.avatar)).catch((e) => setErr(String(e)));
+    if (id) api.getAvatar(id).then((r) => setForm(r.avatar)).catch((e) => setErr(errMsg(e)));
     api.listElevenVoices().then((r) => setElevenVoices(r.voices)).catch(() => setElevenVoices([]));
   }, [id]);
 
@@ -45,7 +46,7 @@ export function AvatarEditor() {
     try {
       const r = await api.generateCharacterSheet(id);
       setForm((f) => ({ ...f, character_sheet_url: r.character_sheet_url }));
-    } catch (e) { setErr(String(e)); } finally { setSheetBusy(false); }
+    } catch (e) { setErr(errMsg(e)); } finally { setSheetBusy(false); }
   };
   const genSamples = async () => {
     if (!id) return;
@@ -53,7 +54,7 @@ export function AvatarEditor() {
     try {
       const r = await api.generateVoiceSamples(id);
       setForm((f) => ({ ...f, voice_sample_urls: r.voice_sample_urls }));
-    } catch (e) { setErr(String(e)); } finally { setSamplesBusy(false); }
+    } catch (e) { setErr(errMsg(e)); } finally { setSamplesBusy(false); }
   };
 
   // Écoute d'un extrait de la voix ElevenLabs sélectionnée.
@@ -74,7 +75,7 @@ export function AvatarEditor() {
       if (editing && id) await api.updateAvatar(id, form);
       else await api.createAvatar(form);
       nav("/avatars");
-    } catch (e) { setErr(String(e)); } finally { setSaving(false); }
+    } catch (e) { setErr(errMsg(e)); } finally { setSaving(false); }
   };
 
   return (
@@ -111,7 +112,7 @@ export function AvatarEditor() {
               <label className="block"><span className="text-sm text-slate-600">Sexe & âge perçu</span><input className={field} value={form.sex_age ?? ""} onChange={(e) => set("sex_age", e.target.value)} /></label>
               <label className="block"><span className="text-sm text-slate-600">Statut</span>
                 <select className={field} value={form.status ?? "draft"} onChange={(e) => set("status", e.target.value as Avatar["status"])}>
-                  <option value="draft">draft</option><option value="active">active</option><option value="paused">paused</option>
+                  <option value="draft">Brouillon</option><option value="active">Actif</option><option value="paused">En pause</option>
                 </select>
               </label>
             </div>

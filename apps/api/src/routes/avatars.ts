@@ -3,6 +3,7 @@ import { Router } from "express";
 import { chatAvatar, chatAvatarStream, type ChatMessage } from "../domain/avatarChat";
 import { buildCharacterSheetPrompt, buildPortraitPrompt, draftPortraitSpec, normalizePortraitSpec } from "../domain/faceGen";
 import { buildSystemPrompt } from "../domain/systemPrompt";
+import { assertBudget, recordUsage } from "../domain/billing";
 import { asyncHandler } from "../lib/asyncHandler";
 import { badRequest } from "../lib/httpError";
 import { requireAvatar } from "../lib/scope";
@@ -19,6 +20,7 @@ export const avatarsRouter = Router();
 avatarsRouter.post(
   "/chat",
   asyncHandler(async (req, res) => {
+    await assertBudget(req.org!.id, 0.02);
     const messages = Array.isArray(req.body?.messages) ? (req.body.messages as ChatMessage[]) : [];
     const draft = (req.body?.draft ?? {}) as Record<string, unknown>;
     res.json(await chatAvatar(messages, draft));
@@ -29,6 +31,7 @@ avatarsRouter.post(
 avatarsRouter.post(
   "/portrait-spec",
   asyncHandler(async (req, res) => {
+    await assertBudget(req.org!.id, 0.02);
     const fiche = (req.body?.fiche ?? {}) as Record<string, any>;
     const spec = await draftPortraitSpec({
       name: fiche.name,
@@ -48,6 +51,8 @@ avatarsRouter.post(
 avatarsRouter.post(
   "/generate-face",
   asyncHandler(async (req, res) => {
+    await assertBudget(req.org!.id, 0.2);
+    await recordUsage({ orgId: req.org!.id, avatarId: null, kind: "portrait", estimatedUsd: 0.2 });
     let spec = req.body?.spec ? normalizePortraitSpec(req.body.spec as Record<string, unknown>) : null;
     if (!spec) {
       const fiche = (req.body?.fiche ?? {}) as Record<string, any>;
@@ -78,6 +83,7 @@ avatarsRouter.get(
 avatarsRouter.post(
   "/chat/stream",
   asyncHandler(async (req, res) => {
+    await assertBudget(req.org!.id, 0.02);
     const messages = Array.isArray(req.body?.messages) ? (req.body.messages as ChatMessage[]) : [];
     const draft = (req.body?.draft ?? {}) as Record<string, unknown>;
 
@@ -101,6 +107,8 @@ avatarsRouter.post(
 avatarsRouter.post(
   "/:id/character-sheet/generate",
   asyncHandler(async (req, res) => {
+    await assertBudget(req.org!.id, 0.3);
+    await recordUsage({ orgId: req.org!.id, avatarId: String(req.params.id), kind: "character_sheet", estimatedUsd: 0.3 });
     const avatar = await requireAvatar(req.org!.id, String(req.params.id), "id, ref_image_url, portrait_spec");
     if (!avatar.ref_image_url) throw badRequest("Génère d'abord son portrait principal.");
 
@@ -120,6 +128,8 @@ avatarsRouter.post(
 avatarsRouter.post(
   "/:id/voice-samples/generate",
   asyncHandler(async (req, res) => {
+    await assertBudget(req.org!.id, 0.05);
+    await recordUsage({ orgId: req.org!.id, avatarId: String(req.params.id), kind: "voice_samples", estimatedUsd: 0.05 });
     const avatar = await requireAvatar(req.org!.id, String(req.params.id), "id, eleven_voice_id");
     if (!avatar.eleven_voice_id) throw badRequest("Choisis d'abord sa voix ElevenLabs.");
     const urls = await generateVoiceSamples(avatar.eleven_voice_id, avatar.id);
@@ -149,6 +159,8 @@ avatarsRouter.get(
 avatarsRouter.post(
   "/:id/locations/generate",
   asyncHandler(async (req, res) => {
+    await assertBudget(req.org!.id, 0.5);
+    await recordUsage({ orgId: req.org!.id, avatarId: String(req.params.id), kind: "locations", estimatedUsd: 0.5 });
     const avatar = await requireAvatar<{ id: string; name: string; niche: string | null; city: string | null; system_prompt: string | null }>(
       req.org!.id, String(req.params.id), "id, name, niche, city, system_prompt",
     );
@@ -174,6 +186,8 @@ avatarsRouter.post(
 avatarsRouter.post(
   "/:id/locations/:locId/regenerate",
   asyncHandler(async (req, res) => {
+    await assertBudget(req.org!.id, 0.15);
+    await recordUsage({ orgId: req.org!.id, avatarId: String(req.params.id), kind: "location", estimatedUsd: 0.15 });
     const avatarId = String(req.params.id);
     await requireAvatar(req.org!.id, avatarId, "id");
     const { regenerateLocationImage } = await import("../domain/locations");
@@ -251,6 +265,8 @@ avatarsRouter.get(
 avatarsRouter.post(
   "/:id/references/generate",
   asyncHandler(async (req, res) => {
+    await assertBudget(req.org!.id, 0.6);
+    await recordUsage({ orgId: req.org!.id, avatarId: String(req.params.id), kind: "references", estimatedUsd: 0.6 });
     const { IDENTITY_SELECT, generateReferencePack } = await import("../domain/characterBible");
     const avatar = await requireAvatar<import("../domain/characterBible").AvatarIdentity>(req.org!.id, String(req.params.id), IDENTITY_SELECT);
     const kinds = Array.isArray(req.body?.kinds) ? (req.body.kinds as string[]) : undefined;
@@ -301,6 +317,8 @@ avatarsRouter.get(
 avatarsRouter.post(
   "/:id/wardrobe/generate",
   asyncHandler(async (req, res) => {
+    await assertBudget(req.org!.id, 0.4);
+    await recordUsage({ orgId: req.org!.id, avatarId: String(req.params.id), kind: "wardrobe", estimatedUsd: 0.4 });
     const { IDENTITY_SELECT, generateWardrobe } = await import("../domain/characterBible");
     const avatar = await requireAvatar<import("../domain/characterBible").AvatarIdentity & { personality: string[] | null; clothing_style: string | null; system_prompt: string | null }>(
       req.org!.id, String(req.params.id), `${IDENTITY_SELECT}, personality, clothing_style, system_prompt`,
@@ -379,6 +397,8 @@ avatarsRouter.get(
 avatarsRouter.post(
   "/:id/keyframes/generate",
   asyncHandler(async (req, res) => {
+    await assertBudget(req.org!.id, 0.15);
+    await recordUsage({ orgId: req.org!.id, avatarId: String(req.params.id), kind: "keyframe", estimatedUsd: 0.15 });
     const { IDENTITY_SELECT } = await import("../domain/characterBible");
     const { ensureKeyframe, isFraming } = await import("../domain/keyframes");
     const avatar = await requireAvatar<import("../domain/characterBible").AvatarIdentity>(req.org!.id, String(req.params.id), IDENTITY_SELECT);

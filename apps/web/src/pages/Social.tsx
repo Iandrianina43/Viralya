@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, type Avatar, type SocialConnection, type SocialFeed, type SocialPost } from "../api";
 import { AvatarPhoto } from "../components/AvatarPhoto";
+import { ConfirmModal } from "../components/Modal";
 import { Button, useToast } from "../components/ui";
 
 // ─────────────────────────────────────────────────────────────
@@ -52,6 +53,8 @@ export function Social() {
     try { await api.updateSocialProfile(id, { network, ...draft, link: draft.link || null }); setEditing(false); await load(); toast.push("ok", "Profil mis à jour."); }
     catch (e) { toast.push("warn", String((e as Error).message ?? e)); } finally { setBusy(null); }
   };
+  // Confirmation avant une action payante, irréversible ou publique.
+  const [confirmAct, setConfirmAct] = useState<{ title: string; message: string; danger?: boolean; confirmLabel?: string; run: () => void } | null>(null);
   const publish = async (post: SocialPost) => {
     setBusy(post.id);
     try { await api.publishNow(post.id); await load(); toast.push("ok", "Publié."); } catch (e) { toast.push("warn", String((e as Error).message ?? e)); } finally { setBusy(null); }
@@ -129,7 +132,7 @@ export function Social() {
               <div key={u.id} className="flex items-center gap-3 text-sm">
                 <div className="w-10 h-14 rounded-md bg-slate-100 overflow-hidden shrink-0">{u.cover_url && <img src={u.cover_url} className="w-full h-full object-cover" alt="" />}</div>
                 <div className="flex-1 min-w-0"><div className="font-medium text-ink truncate">{u.title ?? u.caption.slice(0, 60)}</div><div className="text-xs text-slate-500">{u.scheduled_at ? fmtDate.format(new Date(u.scheduled_at)) : "—"} · {u.type}</div></div>
-                <Button size="sm" variant="secondary" loading={busy === u.id} onClick={() => void publish(u)}>Publier maintenant</Button>
+                <Button size="sm" variant="secondary" loading={busy === u.id} onClick={() => setConfirmAct({ title: "Publier maintenant ?", message: "Le contenu part sur ce compte (réellement si le réseau est connecté). Une publication réelle ne se retire pas depuis Viralya.", confirmLabel: "Publier", run: () => void publish(u) })}>Publier maintenant</Button>
               </div>
             ))}
           </div>
@@ -162,7 +165,7 @@ export function Social() {
       {/* Publication réelle (phase 4) */}
       <div className="card p-4">
         <div className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Publication réelle</div>
-        <p className="text-xs text-slate-500 mb-3">Agrégateur Ayrshare : un profil par influenceur, les réseaux choisis, le label « contenu IA » envoyé automatiquement. {providerOk ? "Clé configurée sur le serveur." : "Aucune clé AYRSHARE_API_KEY sur le serveur : les connexions resteront inactives."}</p>
+        <p className="text-xs text-slate-500 mb-3">Agrégateur Ayrshare : un profil par influenceur, les réseaux choisis, le label « contenu IA » envoyé automatiquement. {providerOk ? "Publication réelle activée sur ce serveur." : "La publication réelle n'est pas encore activée sur cet espace : les connexions resteront inactives (contacte le support)."}</p>
         {connections.length > 0 && (
           <div className="space-y-1.5 mb-3">
             {connections.map((c) => (
@@ -171,7 +174,7 @@ export function Social() {
                 <span className="text-slate-500 text-xs">{c.networks.join(", ")}</span>
                 {c.profile_key && <span className="text-slate-400 text-xs font-mono truncate">{c.profile_key.slice(0, 8)}…</span>}
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${c.status === "active" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>{c.status}</span>
-                <button onClick={() => void removeConnection(c.id)} className="ml-auto text-slate-300 hover:text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                <button onClick={() => setConfirmAct({ title: "Déconnecter ce réseau ?", message: "Les publications réelles de cet influenceur sur ce réseau s'arrêtent immédiatement.", danger: true, run: () => void removeConnection(c.id) })} className="ml-auto text-slate-300 hover:text-rose-600" aria-label="Déconnecter"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
             ))}
           </div>
@@ -185,7 +188,7 @@ export function Social() {
           </div>
           <Button size="sm" variant="secondary" loading={busy === "conn"} disabled={!providerOk || !connForm.networks.length} onClick={() => void addConnection()}>Connecter</Button>
         </div>
-        <div className="text-[11px] text-slate-400 mt-2">Avant la première publication réelle : activer le label « profil généré par IA » sur Instagram et la mention IA dans la bio TikTok (docs/RECHERCHE-PUBLICATION.md).</div>
+        <div className="text-[11px] text-slate-400 mt-2">Avant la première publication réelle : activer le label « profil généré par IA » sur Instagram et la mention IA dans la bio TikTok.</div>
       </div>
 
       {open && (
@@ -211,6 +214,8 @@ export function Social() {
           </div>
         </div>
       )}
+      <ConfirmModal open={!!confirmAct} title={confirmAct?.title ?? ""} message={confirmAct?.message ?? ""} danger={confirmAct?.danger} confirmLabel={confirmAct?.confirmLabel ?? "Confirmer"}
+        onConfirm={() => { const c = confirmAct; setConfirmAct(null); c?.run(); }} onClose={() => setConfirmAct(null)} />
     </div>
   );
 }

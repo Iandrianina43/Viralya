@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, type AuthUser, type Org } from "./api";
-import { clearToken, getOrgId, getToken, setOrgId, setToken, UNAUTHORIZED_EVENT } from "./lib/authToken";
+import { clearToken, getOrgId, getToken, setOrgId, setRefreshToken, setToken, UNAUTHORIZED_EVENT } from "./lib/authToken";
 
 // ─────────────────────────────────────────────────────────────
 // Session côté front : jeton en localStorage, profil + organisations via
@@ -13,7 +13,7 @@ interface AuthContextValue {
   org: Org | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (name: string, email: string, password: string, terms?: boolean) => Promise<void>;
+  signup: (name: string, email: string, password: string, terms?: boolean) => Promise<{ confirm_required?: boolean }>;
   logout: () => void;
   setUser: (u: AuthUser) => void;
   switchOrg: (id: string) => void;
@@ -68,16 +68,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const r = await api.login(email, password);
     setToken(r.token);
+    setRefreshToken(r.refresh_token ?? null);
     await loadSession();
   }, [loadSession]);
 
   const signup = useCallback(async (name: string, email: string, password: string, terms = true) => {
     const r = await api.signup(name, email, password, terms);
-    setToken(r.token);
+    if ("confirm_required" in r && r.confirm_required) return { confirm_required: true };
+    const s = r as { token: string; refresh_token?: string | null };
+    setToken(s.token);
+    setRefreshToken(s.refresh_token ?? null);
     await loadSession();
+    return {};
   }, [loadSession]);
 
   const logout = useCallback(() => {
+    api.logout().catch(() => {}); // révocation côté serveur, sans bloquer
     clearToken();
     setUser(null);
     setOrgs([]);

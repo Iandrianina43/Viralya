@@ -15,6 +15,8 @@ export interface OrgContext {
   id: string;
   name: string;
   role: OrgRole;
+  /** Admin plateforme ouvrant un espace dont il n'est pas membre (support) — journalisé. */
+  impersonated?: boolean;
 }
 
 declare global {
@@ -61,11 +63,20 @@ export async function ensurePersonalOrg(user: { id: string; name?: string; email
   const existing = await listUserOrgs(user.id);
   if (existing.length) return existing[0]!;
   const label = user.name?.trim() || user.email?.split("@")[0] || "Mon espace";
-  const { data: org, error } = await supabase
+  // `personal_of` (migration 0018) : un seul espace personnel par utilisateur, même sous requêtes concurrentes.
+  let { data: org, error } = await supabase
     .from("organizations")
-    .insert({ name: `Espace de ${label}`, created_by: user.id })
+    .insert({ name: `Espace de ${label}`, created_by: user.id, personal_of: user.id })
     .select("id, name")
     .single();
+  if (error && /personal_of/.test(error.message)) {
+    ({ data: org, error } = await supabase.from("organizations").insert({ name: `Espace de ${label}`, created_by: user.id }).select("id, name").single());
+  }
+  if (error && /duplicate|unique|23505/i.test(error.message)) {
+    invalidateOrgCache(user.id);
+    const again = await listUserOrgs(user.id);
+    if (again.length) return again[0]!;
+  }
   if (error || !org) throw new Error(`org create: ${error?.message ?? ""}`);
   const { error: mErr } = await supabase.from("memberships").insert({ org_id: org.id, user_id: user.id, role: "owner" });
   if (mErr) throw new Error(`membership create: ${mErr.message}`);
@@ -85,15 +96,20 @@ export const orgRequired: RequestHandler = async (req, res, next) => {
     if (orgs.length === 0) orgs = [await ensurePersonalOrg(user)];
 
     const wanted = String(req.header("x-org-id") ?? "").trim();
+    // Sans en-tête : première organisation. Avec en-tête : elle doit être une appartenance (jamais de repli
+    // silencieux vers un autre espace — audit du 7 sept.).
     let org = wanted ? orgs.find((o) => o.id === wanted) : orgs[0];
 
-    // Admin plateforme : peut ouvrir n'importe quelle organisation (support).
+    // Admin plateforme : peut ouvrir n'importe quelle organisation (support) — journalisé.
     if (!org && wanted && user.role === "admin") {
       const { data } = await supabase.from("organizations").select("id, name").eq("id", wanted).maybeSingle();
-      if (data) org = { id: String(data.id), name: String(data.name), role: "owner" };
+      if (data) {
+        org = { id: String(data.id), name: String(data.name), role: "owner", impersonated: true };
+        logger.info("admin_impersonation", { adminId: user.id, orgId: org.id, method: req.method, path: req.originalUrl });
+      }
     }
     if (!org) {
-      res.status(403).json({ error: "Organisation inaccessible." });
+      res.status(403).json({ error: wanted ? "Tu n'es pas membre de cet espace." : "Organisation inaccessible." });
       return;
     }
     req.org = org;
@@ -102,3 +118,23 @@ export const orgRequired: RequestHandler = async (req, res, next) => {
     next(err);
   }
 };
+
+/** Invitations en attente pour cette adresse (migration 0018) → appartenances. Silencieux sans table. */
+export async function acceptInvites(userId: string, email: string): Promise<number> {
+  const { data, error } = await supabase
+    .from("org_invites")
+    .select("id, org_id, role")
+    .ilike("email", email.trim().toLowerCase())
+    .is("accepted_at", null)
+    .gt("expires_at", new Date().toISOString());
+  if (error || !data?.length) return 0;
+  let n = 0;
+  for (const inv of data) {
+    const { error: mErr } = await supabase.from("memberships").upsert({ org_id: inv.org_id, user_id: userId, role: toRole(inv.role) }, { onConflict: "org_id,user_id" });
+    if (mErr) continue;
+    await supabase.from("org_invites").update({ accepted_at: new Date().toISOString() }).eq("id", inv.id);
+    n++;
+  }
+  if (n) invalidateOrgCache(userId);
+  return n;
+}

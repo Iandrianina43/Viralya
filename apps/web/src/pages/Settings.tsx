@@ -1,6 +1,7 @@
 import { Ban, Check, CheckCircle2, Loader2, Shield, ShieldOff, Trash2, XCircle } from "lucide-react";
-import { useEffect, useState } from "react";
-import { api, type BillingStatus, type ManagedUser, type Setup } from "../api";
+import { useCallback, useEffect, useState } from "react";
+import { api, type BillingStatus, type ManagedUser, type OrgInvite, type OrgMember, type Setup } from "../api";
+import { errMsg } from "../lib/errMsg";
 import { useAuth } from "../auth";
 import { ConfirmModal } from "../components/Modal";
 
@@ -18,7 +19,7 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
 }
 
 export function Settings() {
-  const { user, setUser, logout } = useAuth();
+  const { user, setUser, logout, org, orgs, refreshOrgs, switchOrg } = useAuth();
   const isAdmin = user?.role === "admin";
 
   // Profil
@@ -76,13 +77,62 @@ export function Settings() {
   };
   useEffect(() => { loadAdmin(); /* eslint-disable-next-line */ }, [isAdmin]);
 
+  // Espace (organisation) : nom, membres, invitations, départ, suppression.
+  const canManageOrg = !!org && (org.role === "owner" || org.role === "admin" || isAdmin);
+  const [orgName, setOrgName] = useState(org?.name ?? "");
+  const [members, setMembers] = useState<OrgMember[]>([]);
+  const [invites, setInvites] = useState<OrgInvite[]>([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"admin" | "member">("member");
+  const [orgBusy, setOrgBusy] = useState(false);
+  const [orgMsg, setOrgMsg] = useState<string | null>(null);
+  const [confirmAct, setConfirmAct] = useState<{ title: string; message: string; danger?: boolean; run: () => void } | null>(null);
+  const loadOrg = useCallback(() => {
+    if (!org) return;
+    setOrgName(org.name);
+    api.orgMembers(org.id).then((r) => setMembers(r.members)).catch(() => setMembers([]));
+    api.orgInvites(org.id).then((r) => setInvites(r.invites)).catch(() => setInvites([]));
+  }, [org]);
+  useEffect(() => { loadOrg(); }, [loadOrg]);
+  const orgAction = async (fn: () => Promise<void>, done?: string) => {
+    if (!org) return;
+    setOrgBusy(true); setOrgMsg(null);
+    try { await fn(); if (done) setOrgMsg(done); loadOrg(); }
+    catch (e) { setOrgMsg(errMsg(e)); } finally { setOrgBusy(false); }
+  };
+  const renameOrg = () => orgAction(async () => { await api.renameOrg(org!.id, orgName.trim()); await refreshOrgs(); }, "Nom enregistré ✓");
+  const addMember = () => orgAction(async () => { const r = await api.addOrgMember(org!.id, inviteEmail.trim(), inviteRole); setInviteEmail(""); setOrgMsg(r.invited ? "Invitation envoyée par e-mail ✓" : "Membre ajouté ✓"); });
+  const changeRole = (m: OrgMember, role: "owner" | "admin" | "member") => orgAction(async () => { await api.addOrgMember(org!.id, m.email, role); }, "Rôle mis à jour ✓");
+  const removeMember = (m: OrgMember) => orgAction(async () => { await api.removeOrgMember(org!.id, m.user_id); }, "Membre retiré.");
+  const leaveOrg = () => orgAction(async () => { await api.removeOrgMember(org!.id, user!.id); await refreshOrgs(); window.location.assign("/dashboard"); });
+  const cancelInvite = (inviteId: string) => orgAction(async () => { await api.deleteOrgInvite(org!.id, inviteId); });
+  const createOrg = () => {
+    const name = window.prompt("Nom du nouvel espace :");
+    if (!name || name.trim().length < 2) return;
+    void orgAction(async () => { const r = await api.createOrg(name.trim()); await refreshOrgs(); switchOrg(r.org.id); });
+  };
+  const deleteOrg = () => {
+    if (!org) return;
+    const typed = window.prompt(`Suppression DÉFINITIVE de l'espace et de tout son contenu. Tape son nom exact pour confirmer : ${org.name}`);
+    if (typed == null) return;
+    void orgAction(async () => { await api.deleteOrg(org.id, typed); await refreshOrgs(); window.location.assign("/dashboard"); });
+  };
+  const ROLE_FR: Record<string, string> = { owner: "propriétaire", admin: "admin", member: "membre" };
+
+  // Suppression de son propre compte.
+  const [delPw, setDelPw] = useState("");
+  const [delMsg, setDelMsg] = useState<string | null>(null);
+  const deleteAccount = async () => {
+    try { await api.deleteAccount(delPw); logout(); } catch (e) { setDelMsg(errMsg(e)); }
+  };
+
   const saveProfile = async () => {
     setProfileBusy(true); setProfileMsg(null);
     try {
       const r = await api.updateProfile(name.trim());
       setUser(r.user);
       setProfileMsg("Profil mis à jour ✓");
-    } catch (e) { setProfileMsg(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { setProfileMsg(e instanceof Error ? e.message : errMsg(e)); }
     finally { setProfileBusy(false); }
   };
 
@@ -94,14 +144,14 @@ export function Settings() {
       await api.changePassword(curPw, newPw);
       setCurPw(""); setNewPw(""); setConfirmPw("");
       setPwMsg({ ok: true, text: "Mot de passe changé ✓" });
-    } catch (e) { setPwMsg({ ok: false, text: e instanceof Error ? e.message : String(e) }); }
+    } catch (e) { setPwMsg({ ok: false, text: e instanceof Error ? e.message : errMsg(e) }); }
     finally { setPwBusy(false); }
   };
 
   const patchUser = async (u: ManagedUser, patch: { role?: "admin" | "user"; banned?: boolean }) => {
     setRowBusy(u.id); setAdminErr(null);
     try { await api.updateUser(u.id, patch); loadAdmin(); }
-    catch (e) { setAdminErr(e instanceof Error ? e.message : String(e)); }
+    catch (e) { setAdminErr(e instanceof Error ? e.message : errMsg(e)); }
     finally { setRowBusy(null); }
   };
 
@@ -109,7 +159,7 @@ export function Settings() {
     if (!confirmDel) return;
     const id = confirmDel.id; setConfirmDel(null); setRowBusy(id);
     try { await api.deleteUser(id); loadAdmin(); }
-    catch (e) { setAdminErr(e instanceof Error ? e.message : String(e)); }
+    catch (e) { setAdminErr(e instanceof Error ? e.message : errMsg(e)); }
     finally { setRowBusy(null); }
   };
 
@@ -170,6 +220,63 @@ export function Settings() {
             </button>
             {pwMsg && <span className={`text-sm ${pwMsg.ok ? "text-green-600" : "text-red-600"}`}>{pwMsg.text}</span>}
           </div>
+        </Section>
+
+        {/* Espace de travail : équipe */}
+        <Section title={`Espace : ${org?.name ?? "…"}`} subtitle="Ton espace de travail : nom, membres et rôles. Les invitations partent par e-mail.">
+          {org && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <input className={`${field} max-w-xs`} value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="Nom de l'espace" disabled={!canManageOrg} aria-label="Nom de l'espace" />
+                {canManageOrg && <button onClick={renameOrg} disabled={orgBusy || orgName.trim().length < 2 || orgName.trim() === org.name} className="text-sm px-3.5 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40">Renommer</button>}
+                {orgs.length > 1 && (
+                  <select value={org.id} onChange={(e) => switchOrg(e.target.value)} className={`${field} max-w-xs`} aria-label="Changer d'espace">
+                    {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  </select>
+                )}
+                <button onClick={createOrg} disabled={orgBusy} className="text-sm px-3.5 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50">+ Nouvel espace</button>
+              </div>
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Membres</div>
+                <div className="space-y-1.5">
+                  {members.map((m) => (
+                    <div key={m.user_id} className="flex flex-wrap items-center gap-2 text-sm">
+                      <span className="text-ink font-medium">{m.name || m.email}</span>
+                      <span className="text-slate-400 text-xs">{m.email}</span>
+                      {canManageOrg && m.user_id !== user?.id ? (
+                        <select value={m.role} onChange={(e) => changeRole(m, e.target.value as "owner" | "admin" | "member")} disabled={orgBusy || (m.role === "owner" && org.role !== "owner" && !isAdmin)}
+                          className="text-xs border border-slate-200 rounded-lg px-2 py-1" aria-label="Rôle">
+                          <option value="member">membre</option><option value="admin">admin</option>{(org.role === "owner" || isAdmin) && <option value="owner">propriétaire</option>}
+                        </select>
+                      ) : <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{ROLE_FR[m.role] ?? m.role}</span>}
+                      {m.user_id === user?.id
+                        ? <button onClick={() => setConfirmAct({ title: "Quitter cet espace ?", message: "Tu n'auras plus accès à ses influenceurs et contenus.", danger: true, run: () => void leaveOrg() })} className="ml-auto text-xs text-slate-400 hover:text-rose-600">Quitter</button>
+                        : canManageOrg && <button onClick={() => setConfirmAct({ title: `Retirer ${m.name || m.email} ?`, message: "La personne perd l'accès à cet espace immédiatement.", danger: true, run: () => void removeMember(m) })} className="ml-auto text-xs text-slate-400 hover:text-rose-600">Retirer</button>}
+                    </div>
+                  ))}
+                  {invites.map((inv) => (
+                    <div key={inv.id} className="flex items-center gap-2 text-sm text-slate-500">
+                      <span>{inv.email}</span><span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">invitation envoyée</span>
+                      {canManageOrg && <button onClick={() => void cancelInvite(inv.id)} className="ml-auto text-xs text-slate-400 hover:text-rose-600">Annuler</button>}
+                    </div>
+                  ))}
+                </div>
+                {canManageOrg && (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <input className={`${field} max-w-xs`} type="email" placeholder="email@exemple.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} aria-label="E-mail à inviter" />
+                    <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as "admin" | "member")} className="text-sm border border-slate-200 rounded-xl px-2" aria-label="Rôle du nouveau membre"><option value="member">membre</option><option value="admin">admin</option></select>
+                    <button onClick={addMember} disabled={orgBusy || !/\S+@\S+\.\S+/.test(inviteEmail)} className="text-sm px-3.5 py-2 rounded-xl bg-ink text-white disabled:opacity-40">Inviter</button>
+                  </div>
+                )}
+                {orgMsg && <div className="text-sm text-slate-600 mt-2">{orgMsg}</div>}
+              </div>
+              {(org.role === "owner" || isAdmin) && (
+                <div className="pt-3 border-t border-slate-100">
+                  <button onClick={deleteOrg} className="text-xs text-rose-600 hover:underline">Supprimer cet espace…</button>
+                </div>
+              )}
+            </div>
+          )}
         </Section>
 
         {/* Abonnement et budget de génération */}
@@ -296,6 +403,17 @@ export function Settings() {
           </Section>
         )}
 
+        {/* Suppression du compte + liens légaux */}
+        <Section title="Supprimer mon compte" subtitle="Définitif : les espaces dont tu es le seul propriétaire sont supprimés avec leurs contenus.">
+          <div className="flex flex-wrap items-center gap-2">
+            <input className={`${field} max-w-xs`} type="password" placeholder="Ton mot de passe" value={delPw} onChange={(e) => setDelPw(e.target.value)} autoComplete="current-password" aria-label="Mot de passe" />
+            <button onClick={() => setConfirmAct({ title: "Supprimer définitivement ton compte ?", message: "Cette action ne peut pas être annulée.", danger: true, run: () => void deleteAccount() })} disabled={delPw.length < 8}
+              className="text-sm px-3.5 py-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 disabled:opacity-40">Supprimer mon compte</button>
+            {delMsg && <span className="text-sm text-rose-600">{delMsg}</span>}
+          </div>
+          <p className="text-xs text-slate-400 mt-3"><a href="/cgu" className="underline hover:text-ink">Conditions d'utilisation</a> · <a href="/confidentialite" className="underline hover:text-ink">Politique de confidentialité</a></p>
+        </Section>
+
         {/* Déconnexion */}
         <div className="flex justify-end">
           <button onClick={logout} className="text-sm px-4 py-2 rounded-xl border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition">
@@ -304,6 +422,7 @@ export function Settings() {
         </div>
       </div>
 
+      <ConfirmModal open={!!confirmAct} title={confirmAct?.title ?? ""} message={confirmAct?.message ?? ""} danger={confirmAct?.danger} onConfirm={() => { const c = confirmAct; setConfirmAct(null); c?.run(); }} onClose={() => setConfirmAct(null)} />
       <ConfirmModal
         open={!!confirmDel}
         title={`Supprimer ${confirmDel?.name || confirmDel?.email} ?`}

@@ -111,3 +111,10 @@ Test à sec du 7 sept. (Alexandre, LLM seulement, `scripts/test-formats.ts`) : e
 amer, voici pourquoi » — 6 scènes, 65 mots, 2 clips + 4 images, ≈ 5 $ en 720p ; pub produit « Gourde Terra »
 — 4 plans horodatés, product lock, 31 mots de voix off, image finale avec espace pour le texte, ≈ 11,7 $ ;
 clone 13 s ≈ 8 $ (rendu + vidéo d'entrée à moitié). Pronoms corrigés (« French male voice-over »).
+
+Premier rendu réel avec le nouveau prompt de prise unique (6 sept., 21 h 20, Alexandre, 720p) :
+contenu `e9890351`, « Le prix caché du latte », 23 s, 8,86 $, texte reconnu à 94 %, visage 0,65 (pass),
+4 plans horodatés sur la voix, aucun insert. Explicative « Ton café est amer » (480p, 2,9 $ estimés) :
+6 plans rendus (2 clips + 4 images) ; le montage a révélé un blocage ffmpeg (`apad` + `-shortest`
+sans fin sur les plans image + voix), corrigé par une durée bornée `-t` (commit 53223bd).
+

@@ -37,6 +37,8 @@ export interface EnqueueOpts {
   contentItemId?: string | null;
   avatarId?: string | null;
   label?: string | null;
+  /** Nombre d'essais (défaut : 5 en base). 1 pour les actions non idempotentes (publication réelle). */
+  maxAttempts?: number;
 }
 
 export async function enqueue(type: JobType, payload: Record<string, unknown>, opts: EnqueueOpts = {}): Promise<JobRow> {
@@ -50,6 +52,7 @@ export async function enqueue(type: JobType, payload: Record<string, unknown>, o
       content_item_id: opts.contentItemId ?? null,
       avatar_id: opts.avatarId ?? (typeof payload.avatar_id === "string" ? payload.avatar_id : null),
       label: opts.label ?? null,
+      ...(opts.maxAttempts ? { max_attempts: opts.maxAttempts } : {}),
     })
     .select("*")
     .single();
@@ -83,6 +86,13 @@ export async function failJob(job: JobRow, err: unknown): Promise<boolean> {
     await supabase.from("jobs").update({ status: "failed", locked_at: null, locked_by: null, error: message }).eq("id", job.id);
     if (job.content_item_id) {
       await supabase.from("content_items").update({ status: "failed", error: message }).eq("id", job.content_item_id);
+      // Registre des dépenses : seul ce qui a réellement été rendu reste compté (0 si rien).
+      void (async () => {
+        const { data } = await supabase.from("content_items").select("assets").eq("id", job.content_item_id).maybeSingle();
+        const actual = Number((data?.assets as Record<string, unknown> | null)?.estimated_cost_usd ?? 0);
+        const m = await import("../domain/billing");
+        await m.settleUsage(String(job.content_item_id), Number.isFinite(actual) ? actual : 0);
+      })().catch(() => {});
       // E-mail d'échec aux membres de l'organisation (jamais bloquant).
       void import("../domain/notifications").then((m) => m.notifyContentStatus(String(job.content_item_id), "failed")).catch(() => {});
     }
@@ -125,7 +135,8 @@ export async function retryJob(id: string): Promise<void> {
   await supabase
     .from("jobs")
     .update({ status: "pending", attempts: 0, error: null, progress: 0, cancel_requested: false, run_after: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .in("status", ["failed", "canceled"]); // jamais un job en cours (double exécution payante)
 }
 
 /** Remet en file les jobs orphelins (worker mort). Renvoie le nombre repris. */

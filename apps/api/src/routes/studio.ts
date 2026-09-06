@@ -6,6 +6,7 @@ import { assertBudget, recordUsage } from "../domain/billing";
 import { launchProduction, type LaunchOptions } from "../domain/production";
 import { emailConfigured } from "../providers/email";
 import { stripeConfigured } from "../providers/stripe";
+import { adminRequired } from "../auth/auth";
 import { asyncHandler } from "../lib/asyncHandler";
 import { badRequest, notFound } from "../lib/httpError";
 import { orgAvatarIds, requireAvatar } from "../lib/scope";
@@ -230,6 +231,8 @@ studioRouter.post(
     const existing = (await listLocations(avatarId, "all").catch(() => [])).find((l) => l.key === key);
 
     if (existing?.ref_image_url) { res.json({ location: existing }); return; }
+    await assertBudget(req.org!.id, 0.15);
+    await recordUsage({ orgId: req.org!.id, avatarId, kind: "location", estimatedUsd: 0.15 });
     if (existing) {
       res.json({ location: await regenerateLocationImage(avatarId, existing.id) });
       return;
@@ -396,6 +399,7 @@ studioRouter.get("/video-models", (_req, res) => {
 
 studioRouter.get(
   "/piapi-balance",
+  adminRequired,
   asyncHandler(async (_req, res) => {
     res.json(await piapiAccountInfo());
   }),
@@ -403,6 +407,7 @@ studioRouter.get(
 
 studioRouter.get(
   "/piapi-history",
+  adminRequired,
   asyncHandler(async (_req, res) => {
     const { piapiHistory } = await import("../providers/piapi");
     const { total, items } = await piapiHistory(100);
@@ -636,6 +641,7 @@ studioRouter.post(
     const kind = String(req.body?.kind ?? "");
     if (!avatarId) throw badRequest("avatar_id requis");
     const avatar = await requireAvatar<AvatarCore>(req.org!.id, avatarId, AVATAR_CORE);
+    await assertBudget(req.org!.id, 0.05);
     const durationSec = Math.max(10, Math.min(30, Number(req.body?.duration_sec) || 30));
     const brief = String(req.body?.brief ?? "").trim();
     const instruction = typeof req.body?.instruction === "string" ? req.body.instruction.trim() : "";
@@ -767,6 +773,8 @@ studioRouter.post(
     const url = String(req.body?.source_url ?? "");
     if (!avatarId || !/^https?:\/\//.test(url)) throw badRequest("avatar_id et source_url requis");
     await requireAvatar(req.org!.id, avatarId, "id");
+    await assertBudget(req.org!.id, 0.05);
+    await recordUsage({ orgId: req.org!.id, avatarId, kind: "transcription", estimatedUsd: 0.02 });
     const { transcribeCloneSource } = await import("../domain/formats");
     res.json(await transcribeCloneSource(url, typeof req.body?.language === "string" ? req.body.language : undefined));
   }),

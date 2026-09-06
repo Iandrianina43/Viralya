@@ -165,6 +165,7 @@ export async function piapiFetch(path: string, init?: RequestInit): Promise<any>
   if (!piapiConfigured()) throw new Error("PiAPI non configuré (PIAPI_API_KEY manquante).");
   const res = await fetch(`${BASE}${path}`, {
     ...init,
+    signal: AbortSignal.timeout(120_000), // une socket pendue ne doit pas bloquer un job indéfiniment
     headers: { "x-api-key": config.PIAPI_API_KEY ?? "", "content-type": "application/json", ...(init?.headers ?? {}) },
   });
   const text = await res.text();

@@ -21,6 +21,7 @@ const SCENE_ROLES = new Set(["hook", "value", "cta"]);
 export async function generateTextJob(job: JobRow): Promise<void> {
   const id = requireContentItemId(job);
   const item = await loadContentItem(id);
+  if (item.status === "failed" || item.status === "canceled") return;
 
   const { data: avatar } = await supabase
     .from("avatars")

@@ -149,6 +149,16 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
   );
 }
 
+function NotFound() {
+  return (
+    <div className="card p-8 text-center max-w-md mx-auto mt-10">
+      <div className="text-4xl font-bold text-ink mb-2">404</div>
+      <p className="text-sm text-slate-500 mb-4">Cette page n'existe pas ou plus (influenceur supprimé, lien périmé).</p>
+      <NavLink to="/dashboard" className="btn-primary inline-block">Retour au tableau de bord</NavLink>
+    </div>
+  );
+}
+
 function Shell() {
   const { user, loading } = useAuth();
   const [drawer, setDrawer] = useState(false);
@@ -164,6 +174,8 @@ function Shell() {
     );
   }
 
+  // Nouveau mot de passe (lien reçu par e-mail) : page publique même si une session existe.
+  if (location.pathname === "/reset") return <Login />;
   // Pages légales : publiques (liens depuis l'inscription et le pied de page).
   if (location.pathname === "/cgu" || location.pathname === "/confidentialite") return <Legal page={location.pathname === "/cgu" ? "cgu" : "privacy"} />;
   if (!user) return <Login />;
@@ -209,7 +221,7 @@ function Shell() {
               <Route path="/content" element={<ContentReview />} />
               <Route path="/tasks" element={<Tasks />} />
               <Route path="/settings" element={<Settings />} />
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              <Route path="*" element={<NotFound />} />
             </Routes>
           </div>
         </main>

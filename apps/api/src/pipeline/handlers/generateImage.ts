@@ -5,6 +5,7 @@ import { advance, loadContentItem, mergeAssets, requireContentItemId } from "../
 export async function generateImageJob(job: JobRow): Promise<void> {
   const id = requireContentItemId(job);
   const item = await loadContentItem(id);
+  if (item.status === "failed" || item.status === "canceled") return;
   const theme = String(item.payload.theme ?? "");
   const caption = String(item.payload.caption ?? "");
   const prompt =

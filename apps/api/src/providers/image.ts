@@ -43,6 +43,7 @@ export async function generateImage(
     return { imageUrl };
   }
   if (config.IMAGE_PROVIDER === "openai" && config.OPENAI_API_KEY) return openaiGenerate(prompt, storagePathBase, size, modelOverride);
+  if (config.NODE_ENV === "production") throw new Error("Aucun fournisseur d'images configuré : génération refusée.");
   logger.warn("image_stub_used");
   return { imageUrl: STUB_URL };
 }
@@ -76,6 +77,7 @@ export async function composeKeyframe(
     return { imageUrl };
   }
   if (config.IMAGE_PROVIDER === "openai" && config.OPENAI_API_KEY) return openaiEdit(faces.slice(0, 6), locationUrl, prompt, storagePathBase, size);
+  if (config.NODE_ENV === "production") throw new Error("Aucun fournisseur d'images configuré : génération refusée.");
   logger.warn("image_stub_used");
   return { imageUrl: STUB_URL };
 }

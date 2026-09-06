@@ -2,6 +2,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, Clapperboard, Image as ImageIc
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, type Avatar, type AvatarLocation, type ContentPlan, type PlanEntry, type PlanEntryType } from "../api";
+import { ConfirmModal } from "../components/Modal";
 import { Button, useToast } from "../components/ui";
 
 // ─────────────────────────────────────────────────────────────
@@ -74,7 +75,9 @@ export function Calendar() {
   }, [inProgress, load]);
   useEffect(() => { if (generating && plan && Date.parse(plan.created_at) > Date.now() - 20 * 60_000 && plan.entries?.length) setGenerating(false); }, [plan, generating]);
 
-  const generate = async () => {
+  // Confirmation avant une action payante, irréversible ou publique.
+  const [confirmAct, setConfirmAct] = useState<{ title: string; message: string; danger?: boolean; confirmLabel?: string; run: () => void } | null>(null);
+  const generateNow = async () => {
     if (!id) return;
     setBusy("gen");
     try {
@@ -114,7 +117,11 @@ export function Calendar() {
     setBusy("skip");
     try { const r = await api.updatePlanEntry(selected.id, { status }); setSelected(r.entry); await load(true); } catch (e) { toast.push("warn", String((e as Error).message ?? e)); } finally { setBusy(null); }
   };
-  const remove = async () => {
+  const generate = () => (plan
+    ? setConfirmAct({ title: "Régénérer le mois ?", message: "Les entrées actuelles, y compris celles modifiées à la main, seront remplacées par un nouveau planning.", danger: true, confirmLabel: "Régénérer", run: () => void generateNow() })
+    : void generateNow());
+  const remove = () => setConfirmAct({ title: "Supprimer cette entrée ?", message: "Elle disparaît du calendrier (un contenu déjà produit reste dans Contenus).", danger: true, run: () => void removeNow() });
+  const removeNow = async () => {
     if (!selected) return;
     setBusy("del");
     try { await api.deletePlanEntry(selected.id); setSelected(null); await load(true); } catch (e) { toast.push("warn", String((e as Error).message ?? e)); } finally { setBusy(null); }
@@ -335,6 +342,8 @@ export function Calendar() {
           </div>
         )}
       </div>
+      <ConfirmModal open={!!confirmAct} title={confirmAct?.title ?? ""} message={confirmAct?.message ?? ""} danger={confirmAct?.danger} confirmLabel={confirmAct?.confirmLabel ?? "Confirmer"}
+        onConfirm={() => { const c = confirmAct; setConfirmAct(null); c?.run(); }} onClose={() => setConfirmAct(null)} />
     </div>
   );
 }

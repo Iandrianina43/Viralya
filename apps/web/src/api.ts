@@ -1,6 +1,6 @@
 // L'API est servie sous /api (le front occupe les mêmes chemins en production).
 // Chaque appel porte la session (Bearer) et l'organisation active (x-org-id).
-import { authHeaders, signalUnauthorized } from "./lib/authToken";
+import { authHeaders, getRefreshToken, setRefreshToken, setToken, signalUnauthorized } from "./lib/authToken";
 
 // En production, le front et l'API sont servis par Express sur le même domaine.
 // Une URL relative évite d'intégrer localhost dans le bundle lorsque le fichier
@@ -229,7 +229,12 @@ export interface DraftBody { title: string; messages: ChatMessage[]; fiche: Avat
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { "content-type": "application/json", ...authHeaders() };
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) } });
-  if (res.status === 401 && !path.startsWith("/auth/")) signalUnauthorized();
+  // Jeton expiré (1 h) : on le renouvelle une fois avec le refresh token, puis on rejoue l'appel.
+  if (res.status === 401 && !path.startsWith("/auth/")) {
+    const retried = (init?.headers as Record<string, string> | undefined)?.["x-session-retry"] === "1";
+    if (!retried && (await refreshSession())) return req<T>(path, { ...init, headers: { ...(init?.headers as Record<string, string> | undefined), "x-session-retry": "1" } });
+    signalUnauthorized();
+  }
   if (!res.ok) {
     let msg = await res.text();
     try { msg = (JSON.parse(msg) as { error?: string }).error ?? msg; } catch { /* texte brut */ }
@@ -258,6 +263,24 @@ async function readSse(res: Response, onEvent: (evt: Record<string, any>) => voi
   }
 }
 
+let refreshing: Promise<boolean> | null = null;
+/** Renouvelle la session avec le refresh token (un seul renouvellement à la fois). */
+async function refreshSession(): Promise<boolean> {
+  const rt = getRefreshToken();
+  if (!rt) return false;
+  refreshing ??= (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/refresh`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ refresh_token: rt }) });
+      if (!res.ok) return false;
+      const s = (await res.json()) as SessionResult;
+      setToken(s.token);
+      setRefreshToken(s.refresh_token ?? null);
+      return true;
+    } catch { return false; } finally { refreshing = null; }
+  })();
+  return refreshing;
+}
+
 /** Envoi d'un fichier en corps brut (vidéo source d'un clone, photo produit). */
 async function rawUpload<T>(path: string, file: File, contentType: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "content-type": contentType, ...authHeaders() }, body: file });
@@ -276,13 +299,20 @@ function post(path: string, body: unknown): Promise<Response> {
 
 // ── Comptes & session ────────────────────────────────────────
 export interface AuthUser { id: string; email: string; name: string; role: "admin" | "user" }
-export interface SessionResult { token: string; expires_at: number | null; user: AuthUser }
+export interface SessionResult { token: string; refresh_token?: string | null; expires_at: number | null; user: AuthUser }
+export interface PublicConfig { signup_open: boolean; email_configured: boolean; legal_editor: string | null }
+export interface OrgInvite { id: string; email: string; role: string; expires_at: string; created_at: string }
 export interface ManagedUser { id: string; email: string; name: string; role: "admin" | "user"; created_at: string; last_sign_in_at: string | null; banned: boolean }
 
 export const api = {
   // Auth
   login: (email: string, password: string) => req<SessionResult>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
-  signup: (name: string, email: string, password: string, terms = true) => req<SessionResult>("/auth/signup", { method: "POST", body: JSON.stringify({ name, email, password, terms }) }),
+  signup: (name: string, email: string, password: string, terms = true) => req<SessionResult | { confirm_required: true }>("/auth/signup", { method: "POST", body: JSON.stringify({ name, email, password, terms }) }),
+  publicConfig: () => req<PublicConfig>("/auth/public-config"),
+  forgotPassword: (email: string) => req<{ ok: boolean }>("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) }),
+  resetPassword: (access_token: string, new_password: string) => req<{ ok: boolean }>("/auth/reset-password", { method: "POST", body: JSON.stringify({ access_token, new_password }) }),
+  logout: () => req<void>("/auth/logout", { method: "POST", body: "{}" }),
+  deleteAccount: (password: string) => req<void>("/auth/me", { method: "DELETE", body: JSON.stringify({ password }) }),
   me: () => req<{ user: AuthUser; orgs: Org[] }>("/auth/me"),
   updateProfile: (name: string) => req<{ ok: boolean; user: AuthUser }>("/auth/profile", { method: "PUT", body: JSON.stringify({ name }) }),
   changePassword: (current_password: string, new_password: string) => req<{ ok: boolean }>("/auth/change-password", { method: "POST", body: JSON.stringify({ current_password, new_password }) }),
@@ -295,8 +325,11 @@ export const api = {
   createOrg: (name: string) => req<{ org: Org }>("/orgs", { method: "POST", body: JSON.stringify({ name }) }),
   renameOrg: (id: string, name: string) => req<{ ok: boolean }>(`/orgs/${id}`, { method: "PUT", body: JSON.stringify({ name }) }),
   orgMembers: (id: string) => req<{ members: OrgMember[] }>(`/orgs/${id}/members`),
-  addOrgMember: (id: string, email: string, role: "admin" | "member" = "member") => req<{ ok: boolean }>(`/orgs/${id}/members`, { method: "POST", body: JSON.stringify({ email, role }) }),
+  addOrgMember: (id: string, email: string, role: "owner" | "admin" | "member" = "member") => req<{ ok: boolean; invited: boolean }>(`/orgs/${id}/members`, { method: "POST", body: JSON.stringify({ email, role }) }),
   removeOrgMember: (id: string, userId: string) => req<void>(`/orgs/${id}/members/${userId}`, { method: "DELETE" }),
+  orgInvites: (id: string) => req<{ invites: OrgInvite[] }>(`/orgs/${id}/invites`),
+  deleteOrgInvite: (id: string, inviteId: string) => req<void>(`/orgs/${id}/invites/${inviteId}`, { method: "DELETE" }),
+  deleteOrg: (id: string, confirm: string) => req<void>(`/orgs/${id}`, { method: "DELETE", body: JSON.stringify({ confirm }) }),
 
   chatAvatar: (messages: ChatMessage[], draft: AvatarDraft) =>
     req<ChatResult>("/avatars/chat", { method: "POST", body: JSON.stringify({ messages, draft }) }),

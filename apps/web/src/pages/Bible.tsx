@@ -1,4 +1,5 @@
 import { MediaButton } from "../components/MediaViewer";
+import { ConfirmModal } from "../components/Modal";
 import { Camera, Check, Clapperboard, ExternalLink, Images, Shirt, Sparkles, Star, Trash2, UserSquare2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -137,6 +138,8 @@ export function Bible() {
   const defaultModelInfo = models.find((m) => m.id === defaultModel);
   const keyframeCost = defaultModelInfo ? defaultModelInfo.price_per_image["1K"] + extraRef(defaultModelInfo, 7) : null;
 
+  // Confirmation avant une action payante, irréversible ou publique.
+  const [confirmAct, setConfirmAct] = useState<{ title: string; message: string; danger?: boolean; confirmLabel?: string; run: () => void } | null>(null);
   const run = async (key: string, fn: () => Promise<void>, done: string) => {
     setBusy(key);
     try { await fn(); toast.push("ok", done); await load(); }
@@ -215,7 +218,7 @@ export function Bible() {
                       <Pill tone={st.tone}>{st.label}</Pill>
                       <div className="flex items-center gap-0.5">
                         <button title={r.validated ? "Retirer la validation" : "Valider comme référence"} className={`p-1 rounded hover:bg-paper-2 ${r.validated ? "text-ok" : "text-muted"}`} onClick={() => void run(`v-${r.id}`, async () => { await api.updateReference(id, r.id, { validated: !r.validated }); }, r.validated ? "Validation retirée." : "Référence validée.")}><Check className="w-4 h-4" /></button>
-                        <button title="Supprimer" className="p-1 rounded text-muted hover:bg-warn-soft hover:text-warn" onClick={() => void run(`d-${r.id}`, async () => { await api.deleteReference(id, r.id); }, "Référence supprimée.")}><Trash2 className="w-4 h-4" /></button>
+                        <button title="Supprimer" className="p-1 rounded text-muted hover:bg-warn-soft hover:text-warn" onClick={() => setConfirmAct({ title: "Supprimer cette référence ?", message: "L'image quitte la fiche ; les contenus déjà produits ne changent pas.", danger: true, run: () => void run(`d-${r.id}`, async () => { await api.deleteReference(id, r.id); }, "Référence supprimée.") })}><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
                   </figcaption>
@@ -263,7 +266,7 @@ export function Bible() {
                   <p className="text-muted mt-1 line-clamp-3">{o.description_en}</p>
                   <div className="mt-auto pt-2 flex items-center gap-0.5 justify-end">
                     {!o.is_default && <button title="Tenue par défaut" className="p-1 rounded text-muted hover:bg-paper-2" onClick={() => void run(`o-${o.id}`, async () => { await api.updateOutfit(id, o.id, { is_default: true }); }, "Tenue par défaut mise à jour.")}><Star className="w-4 h-4" /></button>}
-                    <button title="Supprimer" className="p-1 rounded text-muted hover:bg-warn-soft hover:text-warn" onClick={() => void run(`od-${o.id}`, async () => { await api.deleteOutfit(id, o.id); }, "Tenue supprimée.")}><Trash2 className="w-4 h-4" /></button>
+                    <button title="Supprimer" className="p-1 rounded text-muted hover:bg-warn-soft hover:text-warn" onClick={() => setConfirmAct({ title: "Supprimer cette tenue ?", message: "Les keyframes qui l'utilisent restent, mais aucune nouvelle vidéo ne la portera.", danger: true, run: () => void run(`od-${o.id}`, async () => { await api.deleteOutfit(id, o.id); }, "Tenue supprimée.") })}><Trash2 className="w-4 h-4" /></button>
                   </div>
                 </figcaption>
               </figure>
@@ -337,7 +340,7 @@ export function Bible() {
                       <Pill tone={st.tone}>{st.label}</Pill>
                       <div className="flex items-center gap-0.5">
                         <button title={k.validated ? "Retirer la validation (ne sera plus réutilisé)" : "Valider (sera réutilisé comme référence)"} className={`p-1 rounded hover:bg-paper-2 ${k.validated ? "text-ok" : "text-muted"}`} onClick={() => void run(`kv-${k.id}`, async () => { await api.updateKeyframe(id, k.id, { validated: !k.validated }); }, k.validated ? "Validation retirée." : "Keyframe validé.")}><Check className="w-4 h-4" /></button>
-                        <button title="Supprimer" className="p-1 rounded text-muted hover:bg-warn-soft hover:text-warn" onClick={() => void run(`kd-${k.id}`, async () => { await api.deleteKeyframe(id, k.id); }, "Keyframe supprimé.")}><Trash2 className="w-4 h-4" /></button>
+                        <button title="Supprimer" className="p-1 rounded text-muted hover:bg-warn-soft hover:text-warn" onClick={() => setConfirmAct({ title: "Supprimer ce keyframe ?", message: "Il sera régénéré (payant) la prochaine fois que ce décor et cette tenue serviront.", danger: true, run: () => void run(`kd-${k.id}`, async () => { await api.deleteKeyframe(id, k.id); }, "Keyframe supprimé.") })}><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </div>
                   </figcaption>
@@ -454,6 +457,8 @@ export function Bible() {
           </div>
         )}
       </section>
+      <ConfirmModal open={!!confirmAct} title={confirmAct?.title ?? ""} message={confirmAct?.message ?? ""} danger={confirmAct?.danger} confirmLabel={confirmAct?.confirmLabel ?? "Confirmer"}
+        onConfirm={() => { const c = confirmAct; setConfirmAct(null); c?.run(); }} onClose={() => setConfirmAct(null)} />
     </div>
   );
 }

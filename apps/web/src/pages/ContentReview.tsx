@@ -1,5 +1,6 @@
 import { Check, History, Play, RotateCcw, Send, X, XCircle } from "lucide-react";
 import { MediaButton } from "../components/MediaViewer";
+import { ConfirmModal } from "../components/Modal";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type ContentItem, type ContentVersion } from "../api";
@@ -112,6 +113,8 @@ export function ContentReview() {
     return c;
   }, [items]);
 
+  // Confirmation avant une action payante, irréversible ou publique.
+  const [confirmAct, setConfirmAct] = useState<{ title: string; message: string; danger?: boolean; confirmLabel?: string; run: () => void } | null>(null);
   const act = async (id: string, fn: (id: string) => Promise<unknown>, done: string) => {
     setBusy(id);
     try { await fn(id); toast.push("ok", done); await load(); }
@@ -192,8 +195,8 @@ export function ContentReview() {
                   </MediaButton>
                 )}
                 {canReview && <Button size="sm" icon={<Check className="w-3.5 h-3.5" />} loading={busy === it.id} onClick={() => void act(it.id, (id) => api.approveContent(id), "Contenu approuvé et programmé.")}>Approuver &amp; programmer</Button>}
-                {(canReview || it.status === "scheduled") && <Button size="sm" variant="secondary" icon={<Send className="w-3.5 h-3.5" />} loading={busy === it.id} onClick={() => void act(it.id, api.publishNow, "Publié sur le compte de l'influenceur.")}>Publier maintenant</Button>}
-                {canReview && <Button size="sm" variant="secondary" icon={<X className="w-3.5 h-3.5" />} loading={busy === it.id} onClick={() => void act(it.id, api.rejectContent, "Contenu refusé.")}>Refuser</Button>}
+                {(canReview || it.status === "scheduled") && <Button size="sm" variant="secondary" icon={<Send className="w-3.5 h-3.5" />} loading={busy === it.id} onClick={() => setConfirmAct({ title: "Publier maintenant ?", message: "Le contenu part sur le compte de l'influenceur (réellement si un réseau est connecté, sinon sur le compte simulé). Une publication réelle ne se retire pas depuis Viralya.", confirmLabel: "Publier", run: () => void act(it.id, api.publishNow, "Publié sur le compte de l'influenceur.") })}>Publier maintenant</Button>}
+                {canReview && <Button size="sm" variant="secondary" icon={<X className="w-3.5 h-3.5" />} loading={busy === it.id} onClick={() => setConfirmAct({ title: "Refuser ce contenu ?", message: "Il sort de la file de validation (retrouvable dans le filtre « Tous », relançable).", danger: true, confirmLabel: "Refuser", run: () => void act(it.id, api.rejectContent, "Contenu refusé.") })}>Refuser</Button>}
                 {canCancel && <Button size="sm" variant="ghost" icon={<XCircle className="w-3.5 h-3.5" />} loading={busy === it.id} onClick={() => void act(it.id, api.cancelContent, "Production annulée.")}>Annuler</Button>}
                 {canRetry && <Button size="sm" variant="secondary" icon={<RotateCcw className="w-3.5 h-3.5" />} loading={busy === it.id} onClick={() => void act(it.id, api.retryContent, "Régénération lancée. L'état actuel est conservé en version.")}>Régénérer</Button>}
                 <Button size="sm" variant="ghost" icon={<History className="w-3.5 h-3.5" />} onClick={() => setVersionsFor(versionsFor === it.id ? null : it.id)}>
@@ -211,6 +214,8 @@ export function ContentReview() {
           );
         })}
       </div>
+      <ConfirmModal open={!!confirmAct} title={confirmAct?.title ?? ""} message={confirmAct?.message ?? ""} danger={confirmAct?.danger} confirmLabel={confirmAct?.confirmLabel ?? "Confirmer"}
+        onConfirm={() => { const c = confirmAct; setConfirmAct(null); c?.run(); }} onClose={() => setConfirmAct(null)} />
     </div>
   );
 }

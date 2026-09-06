@@ -264,13 +264,16 @@ export async function handleStripeEvent(event: Stripe.Event): Promise<void> {
   const { error: dup } = await supabase.from("billing_events").insert({ id: event.id, type: event.type });
   if (dup) {
     if (/duplicate|unique|23505/i.test(dup.message)) return;
-    logger.warn("billing_event_log_failed", { err: dup.message });
+    // Sans journal d'idempotence on ne traite pas : Stripe rejouera l'événement.
+    throw new Error(`billing_events : ${dup.message}`);
   }
   switch (event.type) {
     case "checkout.session.completed": {
       const s = event.data.object as Stripe.Checkout.Session;
+      if (s.mode !== "subscription" || !["paid", "no_payment_required"].includes(String(s.payment_status))) { logger.info("stripe_checkout_ignored", { session: s.id, status: s.payment_status }); return; }
       const orgId = s.metadata?.org_id ?? s.client_reference_id ?? (await orgByCustomer(asId(s.customer)));
       if (!orgId) { logger.warn("stripe_checkout_without_org", { session: s.id }); return; }
+      if (!planByCode(s.metadata?.plan_code)) { logger.warn("stripe_checkout_unknown_plan", { session: s.id }); return; }
       await supabase
         .from("organizations")
         .update({

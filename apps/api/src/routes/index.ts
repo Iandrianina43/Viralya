@@ -1,5 +1,5 @@
 import express, { type Express } from "express";
-import { authRequired } from "../auth/auth";
+import { authRequired, rateLimit } from "../auth/auth";
 import { orgRequired } from "../auth/org";
 import { adminRouter } from "./admin";
 import { authRouter } from "./auth";
@@ -31,6 +31,8 @@ export function registerRoutes(app: Express): void {
     if (config.NODE_ENV === "production") res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
     next();
   });
+  // Limiteur global par IP (900 requêtes / 5 min) : protège les routes coûteuses hors auth.
+  app.use("/api", rateLimit(900, 5 * 60_000, "ip"));
   // Webhook Stripe : corps brut pour la vérification de signature, AVANT le parseur JSON.
   app.post("/api/billing/webhook", express.raw({ type: "application/json", limit: "1mb" }), stripeWebhook);
   app.use(express.json({ limit: "2mb" }));

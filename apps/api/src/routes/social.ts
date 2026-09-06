@@ -53,7 +53,7 @@ socialRouter.post(
     if (!["needs_review", "scheduled", "failed"].includes(item.status)) throw new HttpError(409, `statut ${item.status} non publiable`);
     const { data: conn } = await supabase.from("social_connections").select("id").eq("avatar_id", item.avatar_id).eq("status", "active").contains("networks", [item.network]).maybeSingle();
     if (conn && config.AYRSHARE_API_KEY) {
-      const job = await enqueue("publish", { content_item_id: item.id, avatar_id: item.avatar_id }, { contentItemId: item.id, avatarId: item.avatar_id, label: item.title ?? "Publication" });
+      const job = await enqueue("publish", { content_item_id: item.id, avatar_id: item.avatar_id }, { contentItemId: item.id, avatarId: item.avatar_id, label: item.title ?? "Publication", maxAttempts: 1 });
       res.status(202).json({ ok: true, mode: "real", job_id: job.id });
       return;
     }
@@ -102,8 +102,9 @@ socialRouter.post(
   "/sync-stats",
   asyncHandler(async (req, res) => {
     const avatarId = req.body?.avatar_id ? String(req.body.avatar_id) : null;
-    if (avatarId) await requireAvatar(req.org!.id, avatarId, "id");
-    const job = await enqueue("sync_stats", avatarId ? { avatar_id: avatarId } : {}, { avatarId, label: "Statistiques réelles" });
+    if (!avatarId) { res.status(400).json({ error: "avatar_id requis" }); return; }
+    await requireAvatar(req.org!.id, avatarId, "id");
+    const job = await enqueue("sync_stats", { avatar_id: avatarId }, { avatarId, label: "Statistiques réelles" });
     res.status(202).json({ ok: true, job_id: job.id });
   }),
 );

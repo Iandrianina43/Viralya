@@ -19,7 +19,7 @@ ANTHROPIC_API_KEY=sk-ant-...                  # pour des scripts réels (sinon s
 ADMIN_API_KEY=choisis-une-longue-chaine
 ```
 
-Puis côté front : copie `apps/web/.env.example` → `apps/web/.env` et mets le même `ADMIN_API_KEY` dans `VITE_ADMIN_API_KEY`.
+Puis côté front : copie `apps/web/.env.example` → `apps/web/.env` (uniquement `VITE_API_BASE_URL` ; la clé admin ne doit JAMAIS être dans le front).
 
 ## 2. Appliquer les migrations Supabase
 Dans Supabase → **SQL Editor**, colle et exécute dans l'ordre le contenu de :

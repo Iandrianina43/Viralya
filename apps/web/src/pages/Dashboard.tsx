@@ -46,8 +46,10 @@ export function Dashboard() {
   useEffect(() => {
     api.listAvatars().then((r) => setAvatars(r.avatars)).catch((e) => setErr(String(e.message ?? e)));
     api.listContent().then((r) => setContent(r.content)).catch(() => {});
-    api.piapiBalance().then(setBalance).catch(() => {});
-    api.piapiHistory().then(setHistory).catch(() => {});
+    if (user?.role === "admin") {
+      api.piapiBalance().then(setBalance).catch(() => {});
+      api.piapiHistory().then(setHistory).catch(() => {});
+    }
   }, []);
 
   const avatarName = useMemo(() => new Map(avatars.map((a) => [a.id, a.name])), [avatars]);

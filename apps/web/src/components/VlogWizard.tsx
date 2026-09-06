@@ -5,6 +5,7 @@ const INSERT_LABEL: Record<string, string> = { illustration: "illustration", loc
 import { useEffect, useMemo, useState } from "react";
 import { api, type AvatarLocation, type CloneSource, type FormatKind, type FormatProduct, type LocationScope, type SeedanceResolution, type TalkProvider, type TalkProviderInfo, type VideoFormat, type VideoModelInfo, type VlogProduction, type VlogScene } from "../api";
 
+import { errMsg } from "../lib/errMsg";
 // Libellés FR des éléments de direction cinématographique (valeurs en anglais).
 const ELEMENT_FIELDS: Array<{ key: "action" | "scene_desc" | "camera" | "lighting" | "audio_ambiance" | "constraints"; label: string; hint: string }> = [
   { key: "action", label: "Action", hint: "ce qu'elle fait (verbes concrets)" },
@@ -152,7 +153,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
         const rest = u.filter((l) => l.key !== r.location.key);
         return [...rest, r.location];
       });
-    } catch (e) { setErr(String(e)); } finally { setPrepBusy(null); }
+    } catch (e) { setErr(errMsg(e)); } finally { setPrepBusy(null); }
   };
 
   // Décors utilisés par la vidéo : existants (univers) + nouveaux (à créer).
@@ -190,7 +191,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
       setMeta({ title: r.title, caption: r.caption, hashtags: r.hashtags });
       if (r.story) setStory(r.story);
       setInstruction("");
-    } catch (e) { setErr(String(e)); } finally { setStreaming(false); }
+    } catch (e) { setErr(errMsg(e)); } finally { setStreaming(false); }
   };
 
   const runScenes = async (opts: { instruction?: string } = {}) => {
@@ -200,7 +201,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
       setScenes(r.scenes);
       setSceneInstruction("");
       setStep(2);
-    } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+    } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
   };
 
   const produce = async () => {
@@ -211,7 +212,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
       decors.forEach((d) => { if (d.isNew) chosen[d.key] = d.scope; });
       const r = await api.vlogProduce(avatarId, production, chosen, videoModel, resolution, { format, talkProvider, singleTake, inserts: broll });
       onLaunched(r.content_item_id, meta.title || "Vlog");
-    } catch (e) { setErr(String(e)); setBusy(false); }
+    } catch (e) { setErr(errMsg(e)); setBusy(false); }
   };
 
   // ── Formats (pub, explicative, clone) ──
@@ -228,12 +229,12 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
       setScenes(r.production.scenes);
       setSceneInstruction("");
       setStep(2);
-    } catch (e) { setErr(String(e)); } finally { setBusy(false); }
+    } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
   };
   const uploadProductImage = async (file: File) => {
     setImgBusy(true); setErr(null);
     try { const r = await api.uploadImage(avatarId, file); setProduct((p) => ({ ...p, image_url: r.url })); }
-    catch (e) { setErr(String(e)); } finally { setImgBusy(false); }
+    catch (e) { setErr(errMsg(e)); } finally { setImgBusy(false); }
   };
   const loadSource = async (file?: File) => {
     setErr(null); setCloneBusy(file ? "Envoi et préparation de la vidéo…" : "Téléchargement du lien…");
@@ -243,7 +244,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
       setCloneBusy("Transcription de la vidéo…");
       const t = await api.cloneTranscribe(avatarId, s.url);
       setCloneText(t.text);
-    } catch (e) { setErr(String(e)); } finally { setCloneBusy(null); }
+    } catch (e) { setErr(errMsg(e)); } finally { setCloneBusy(null); }
   };
   const cloneContinue = () => {
     if (!source) return;
@@ -267,7 +268,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
         source_video_url: source?.url, source_seconds: source?.seconds,
       });
       onLaunched(r.content_item_id, meta.title || "Vidéo");
-    } catch (e) { setErr(String(e)); setBusy(false); }
+    } catch (e) { setErr(errMsg(e)); setBusy(false); }
   };
   useEffect(() => {
     if (step !== 3 || kind === "vlog" || !scenes.length) return;

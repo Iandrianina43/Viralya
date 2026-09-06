@@ -17,7 +17,10 @@ const EnvSchema = z.object({
   API_PORT: z.coerce.number().default(4000),
   API_BASE_URL: z.string().default("http://localhost:4000"),
   WEB_BASE_URL: z.string().default("http://localhost:5173"),
-  ADMIN_API_KEY: z.string().min(1).default("dev-admin-key"),
+  ADMIN_API_KEY: z.string().min(1).default("dev-admin-key"), // refusé en production (voir ci-dessous)
+  MAX_ORGS_PER_USER: z.coerce.number().int().min(1).default(3),
+  // Mentions de l'éditeur affichées dans les CGU / confidentialité (raison sociale, adresse, contact).
+  LEGAL_EDITOR: z.string().optional(),
 
   SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
@@ -73,3 +76,17 @@ if (!parsed.success) {
   process.exit(1);
 }
 export const config = parsed.data;
+
+// Garde-fous de production (audit du 7 sept. 2026).
+if (config.NODE_ENV === "production") {
+  const fatal: string[] = [];
+  if (config.ADMIN_API_KEY === "dev-admin-key" || config.ADMIN_API_KEY.length < 24) fatal.push("ADMIN_API_KEY doit être une clé unique de 24 caractères minimum");
+  if (config.LLM_PROVIDER === "anthropic" ? !config.ANTHROPIC_API_KEY : !config.OPENAI_API_KEY) fatal.push("clé du fournisseur de texte manquante");
+  if (config.IMAGE_PROVIDER === "piapi" && !config.PIAPI_API_KEY) fatal.push("PIAPI_API_KEY manquante");
+  if (fatal.length) {
+    console.error("❌ Configuration de production refusée :", fatal.join(" ; "));
+    process.exit(1);
+  }
+  if (/localhost|127\.0\.0\.1/.test(config.WEB_BASE_URL)) console.warn("⚠️ WEB_BASE_URL pointe vers localhost : liens des e-mails et retour Stripe incorrects.");
+  if (config.DEFAULT_MONTHLY_BUDGET_USD == null) console.warn("⚠️ DEFAULT_MONTHLY_BUDGET_USD vide : les espaces sans forfait n'ont aucun plafond de dépenses IA.");
+}

@@ -42,6 +42,10 @@ ugcRouter.post(
     const allowed = new Set(await orgAvatarIds(req.org!.id));
     const avatarIds = (Array.isArray(req.body?.avatar_ids) ? req.body.avatar_ids.map(String) : []).filter((id: string) => allowed.has(id));
     if (!avatarIds.length) throw badRequest("Choisis au moins un influenceur de ton organisation.");
+    const { assertBudget, recordUsage } = await import("../domain/billing");
+    const scriptsEstimate = 0.05 * avatarIds.length * Math.max(1, Array.isArray(req.body?.durations) ? req.body.durations.length : 1);
+    await assertBudget(req.org!.id, scriptsEstimate);
+    await recordUsage({ orgId: req.org!.id, kind: "ugc_scripts", estimatedUsd: scriptsEstimate });
     const campaign = await createCampaign(req.org!.id, { ...req.body, avatar_ids: avatarIds }).catch((err) => {
       const msg = String((err as Error)?.message ?? err);
       throw new Error(/relation .* does not exist|ugc_campaigns/.test(msg) && /exist/.test(msg) ? "Applique la migration 0016_phase3_calendar_social_ugc.sql pour activer les campagnes UGC." : msg);

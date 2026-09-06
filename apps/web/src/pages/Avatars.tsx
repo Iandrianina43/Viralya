@@ -5,8 +5,12 @@ import { api, type Avatar, type DraftSummary } from "../api";
 import { AvatarPhoto } from "../components/AvatarPhoto";
 import { ConfirmModal } from "../components/Modal";
 
+import { errMsg } from "../lib/errMsg";
+const STATUS_FR: Record<string, string> = { active: "actif", draft: "brouillon", paused: "en pause" };
+
 export function Avatars() {
   const [avatars, setAvatars] = useState<Avatar[]>([]);
+  const [confirmPlan, setConfirmPlan] = useState<Avatar | null>(null);
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -15,7 +19,7 @@ export function Avatars() {
   const [confirmAvatar, setConfirmAvatar] = useState<Avatar | null>(null);
 
   const load = () => {
-    api.listAvatars().then((r) => setAvatars(r.avatars)).catch((e) => setErr(String(e)));
+    api.listAvatars().then((r) => setAvatars(r.avatars)).catch((e) => setErr(errMsg(e)));
     api.listDrafts().then((r) => setDrafts(r.drafts)).catch(() => {});
   };
   useEffect(() => { load(); }, []);
@@ -23,23 +27,23 @@ export function Avatars() {
   const planDay = async (id: string) => {
     setMsg(null); setErr(null); setBusy(id);
     try {
-      const r = await api.planDay(id);
-      setMsg(`Contenu du jour lancé (job ${r.job_id.slice(0, 8)}…). Voir « Revue contenu » dans ~1 min.`);
-    } catch (e) { setErr(String(e)); } finally { setBusy(null); }
+      await api.planDay(id);
+      setMsg("Contenu du jour lancé : suis l'avancement dans le Task Center, les contenus arrivent dans « Contenus ».");
+    } catch (e) { setErr(errMsg(e)); } finally { setBusy(null); }
   };
 
   const doDeleteDraft = async () => {
     if (!confirmDraft) return;
     const id = confirmDraft.id;
     setConfirmDraft(null);
-    try { await api.deleteDraft(id); load(); } catch (e) { setErr(String(e)); }
+    try { await api.deleteDraft(id); load(); } catch (e) { setErr(errMsg(e)); }
   };
 
   const doDeleteAvatar = async () => {
     if (!confirmAvatar) return;
     const id = confirmAvatar.id;
     setConfirmAvatar(null);
-    try { await api.deleteAvatar(id); load(); } catch (e) { setErr(String(e)); }
+    try { await api.deleteAvatar(id); load(); } catch (e) { setErr(errMsg(e)); }
   };
 
   return (
@@ -81,7 +85,7 @@ export function Avatars() {
           <div key={a.id} className="card overflow-hidden flex flex-col">
             <Link to={`/avatars/${a.id}/studio`} className="relative block group">
               <AvatarPhoto src={a.ref_image_url} name={a.name} className="w-full aspect-square" rounded="rounded-none" />
-              <span className={`absolute top-3 left-3 text-xs px-2 py-0.5 rounded-full backdrop-blur bg-white/85 ${a.status === "active" ? "text-green-700" : "text-slate-500"}`}>● {a.status}</span>
+              <span className={`absolute top-3 left-3 text-xs px-2 py-0.5 rounded-full backdrop-blur bg-white/85 ${a.status === "active" ? "text-green-700" : "text-slate-500"}`}>● {STATUS_FR[a.status] ?? a.status}</span>
               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition flex items-center justify-center opacity-0 group-hover:opacity-100">
                 <span className="text-sm font-semibold text-white bg-accent px-4 py-2 rounded-xl flex items-center gap-2"><Clapperboard className="w-4 h-4" /> Ouvrir le studio</span>
               </div>
@@ -89,7 +93,6 @@ export function Avatars() {
             <div className="p-4 flex flex-col flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <Link to={`/avatars/${a.id}/studio`} className="font-bold text-ink text-lg leading-tight hover:text-accent transition">{a.name}</Link>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">{a.video_provider}</span>
                 {a.is_ai_disclosed && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">IA déclarée</span>}
               </div>
               <div className="text-sm text-slate-500 mt-1">{a.niche}{a.city ? ` · ${a.city}` : ""}</div>
@@ -104,7 +107,7 @@ export function Avatars() {
                   <Link to={`/avatars/${a.id}/social`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center" title="Compte social : profil, feed, statistiques">📱 Compte</Link>
                 </div>
                 <div className="grid grid-cols-5 gap-2">
-                  <button onClick={() => planDay(a.id)} disabled={busy === a.id} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center flex items-center justify-center gap-1 disabled:opacity-50" title="Générer le contenu du jour"><Wand2 className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => setConfirmPlan(a)} disabled={busy === a.id} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center flex items-center justify-center gap-1 disabled:opacity-50" title="Générer le contenu du jour (payant)" aria-label="Générer le contenu du jour"><Wand2 className="w-3.5 h-3.5" /></button>
                   <Link to={`/avatars/${a.id}/bible`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center" title="Character Bible : références, garde-robe, photos">Bible</Link>
                   <Link to={`/avatars/${a.id}/journal`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center">Journal</Link>
                   <Link to={`/avatars/${a.id}`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center flex items-center justify-center gap-1" title="Éditer"><Pencil className="w-3.5 h-3.5" /></Link>
@@ -125,6 +128,9 @@ export function Avatars() {
         )}
       </div>
 
+      <ConfirmModal open={!!confirmPlan} title={`Générer le contenu du jour de ${confirmPlan?.name ?? ""} ?`}
+        message="Une vidéo courte, deux accroches et un carrousel sont produits maintenant (≈ 12 $ de génération, décomptés du budget du mois). Tout attend ta validation avant publication."
+        confirmLabel="Lancer" onConfirm={() => { const a = confirmPlan; setConfirmPlan(null); if (a) void planDay(a.id); }} onClose={() => setConfirmPlan(null)} />
       <ConfirmModal
         open={!!confirmDraft}
         title="Supprimer le brouillon ?"

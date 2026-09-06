@@ -1,7 +1,15 @@
 // Stockage du jeton de session et de l'organisation active (localStorage),
 // + signal global de déconnexion.
 const KEY = "viralya_token";
+const REFRESH_KEY = "viralya_refresh";
 const ORG_KEY = "viralya_org";
+
+export function getRefreshToken(): string | null {
+  try { return localStorage.getItem(REFRESH_KEY); } catch { return null; }
+}
+export function setRefreshToken(token: string | null): void {
+  try { if (token) localStorage.setItem(REFRESH_KEY, token); else localStorage.removeItem(REFRESH_KEY); } catch { /* rien */ }
+}
 
 export function getToken(): string | null {
   try { return localStorage.getItem(KEY); } catch { return null; }
@@ -10,7 +18,7 @@ export function setToken(token: string): void {
   try { localStorage.setItem(KEY, token); } catch { /* stockage indisponible */ }
 }
 export function clearToken(): void {
-  try { localStorage.removeItem(KEY); localStorage.removeItem(ORG_KEY); } catch { /* rien */ }
+  try { localStorage.removeItem(KEY); localStorage.removeItem(REFRESH_KEY); localStorage.removeItem(ORG_KEY); } catch { /* rien */ }
 }
 
 export function getOrgId(): string | null {

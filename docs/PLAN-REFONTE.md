@@ -213,3 +213,13 @@ Providers par rôle : `talk` → Kling Avatar / InfiniteTalk ; `broll` → Hailu
 5. **Ordre des phases** : 0 → 1 → 2 → 3, ou 0 → 2 → 1 → 3 si la vidéo doit être montrée en premier.
 
 Sources principales : pages tarifaires officielles Google Gemini API, fal.ai (FLUX.2 pro, OmniHuman 1.5, Flux LoRA trainer), OpenRouter (GPT Image 2, Seedream 4.5), WaveSpeed (InfiniteTalk, Wan 2.2 S2V), AWS Rekognition, communiqué Metricool 2026 ; guides secondaires pour les cadences et le LoRA (signalés comme tels).
+
+## Phase 5 — plateforme complète (7 septembre 2026)
+
+Abonnements Stripe et budget mensuel de génération par organisation (refus avant tout coût, registre
+`usage_ledger`, coût réel à l'assemblage), e-mails Resend (prêt / échec / budget), pilote automatique du
+calendrier (J-1, validation humaine conservée), supervision du worker (`/api/health`), pages légales et
+acceptation des CGU, en-têtes de sécurité. Détail, tarifs indicatifs et décisions à prendre :
+[PLAN-PLATEFORME.md](PLAN-PLATEFORME.md). Audit de production (UX, organisations, pipeline) :
+[AUDIT-PROD.md](AUDIT-PROD.md).
+

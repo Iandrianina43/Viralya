@@ -44,7 +44,7 @@ contentRouter.post(
   "/:id/approve",
   asyncHandler(async (req, res) => {
     const item = await requireContentItem(req.org!.id, String(req.params.id), "id, status, avatar_id, title");
-    if (!["needs_review", "failed"].includes(item.status)) throw new HttpError(409, `statut ${item.status} non approuvable`);
+    if (item.status !== "needs_review") throw new HttpError(409, `statut ${item.status} non approuvable (seul un contenu prêt à valider peut être approuvé)`);
     const scheduledAt = req.body?.scheduled_at as string | undefined;
     const job = await enqueue(
       "schedule",
@@ -60,10 +60,13 @@ contentRouter.post(
 contentRouter.post(
   "/:id/cancel",
   asyncHandler(async (req, res) => {
-    const item = await requireContentItem(req.org!.id, String(req.params.id), "id, status");
+    const item = await requireContentItem(req.org!.id, String(req.params.id), "id, status, assets");
     if (!["queued", "generating"].includes(item.status)) throw new HttpError(409, `production ${item.status} — rien à annuler`);
     await requestCancel(item.id);
     await supabase.from("content_items").update({ status: "canceled", error: "Production annulée" }).eq("id", item.id);
+    // Registre : seul ce qui a réellement été rendu reste compté.
+    const { settleUsage } = await import("../domain/billing");
+    await settleUsage(item.id, Number((item.assets as Record<string, unknown> | null)?.estimated_cost_usd ?? 0));
     res.json({ ok: true });
   }),
 );
@@ -82,8 +85,13 @@ contentRouter.post(
 contentRouter.post(
   "/:id/retry",
   asyncHandler(async (req, res) => {
-    const item = await requireContentItem(req.org!.id, String(req.params.id), "id, avatar_id, title, status");
+    const item = await requireContentItem(req.org!.id, String(req.params.id), "id, avatar_id, title, status, type, payload, assets");
+    // Une régénération complète coûte autant qu'un premier rendu : budget vérifié et inscrit.
+    const { assertBudget, recordUsage } = await import("../domain/billing");
+    const retryEstimate = item.type === "video" ? Number((item.assets as Record<string, unknown> | null)?.estimated_cost_usd ?? 0) || 10 : 0.3;
+    await assertBudget(req.org!.id, retryEstimate);
     await snapshotVersion(item.id, "Avant régénération", req.user?.id ?? null);
+    await recordUsage({ orgId: req.org!.id, avatarId: item.avatar_id, contentItemId: item.id, kind: "retry", estimatedUsd: retryEstimate });
     await supabase.from("content_items").update({ status: "queued", error: null }).eq("id", item.id);
     const job = await enqueue(
       "generate_text",
@@ -107,6 +115,12 @@ contentRouter.post(
     const shots = Array.isArray(item.assets?.shots) ? (item.assets.shots as Array<Record<string, any>>) : [];
     const shot = shots.find((s) => Number(s.idx) === idx);
     if (!Number.isInteger(idx) || !shot) throw new HttpError(404, "plan introuvable");
+    {
+      const { assertBudget, recordUsage } = await import("../domain/billing");
+      const shotEstimate = Number(shot.cost_usd) || 5;
+      await assertBudget(req.org!.id, shotEstimate);
+      await recordUsage({ orgId: req.org!.id, avatarId: item.avatar_id, contentItemId: item.id, kind: "shot_retry", estimatedUsd: shotEstimate });
+    }
 
     await snapshotVersion(item.id, `Avant régénération du plan ${idx + 1}`, req.user?.id ?? null);
 

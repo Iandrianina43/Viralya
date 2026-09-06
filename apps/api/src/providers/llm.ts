@@ -15,15 +15,16 @@ export interface GenerateOptions {
 
 export async function generateText(system: string, user: string, maxTokens = 900, opts: GenerateOptions = {}): Promise<string> {
   if (config.LLM_PROVIDER === "anthropic") {
-    if (!config.ANTHROPIC_API_KEY) return stub();
+    if (!config.ANTHROPIC_API_KEY) return noKey();
     return callAnthropic(system, user, maxTokens, opts);
   }
-  if (!config.OPENAI_API_KEY) return stub();
+  if (!config.OPENAI_API_KEY) return noKey();
   return callOpenAI(system, user, maxTokens);
 }
 
 async function callAnthropic(system: string, user: string, maxTokens: number, opts: GenerateOptions): Promise<string> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
+    signal: AbortSignal.timeout(240_000),
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -56,6 +57,7 @@ async function callAnthropic(system: string, user: string, maxTokens: number, op
 
 async function callOpenAI(system: string, user: string, maxTokens: number): Promise<string> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    signal: AbortSignal.timeout(240_000),
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${config.OPENAI_API_KEY}` },
     body: JSON.stringify({
@@ -103,6 +105,7 @@ async function readSse(body: ReadableStream<Uint8Array>, onEvent: (payload: stri
 
 async function streamAnthropic(system: string, user: string, onToken: (t: string) => void, maxTokens: number): Promise<string> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
+    signal: AbortSignal.timeout(240_000),
     method: "POST",
     headers: { "content-type": "application/json", "x-api-key": config.ANTHROPIC_API_KEY as string, "anthropic-version": "2023-06-01" },
     body: JSON.stringify({ model: config.LLM_MODEL, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }], stream: true }),
@@ -125,6 +128,7 @@ async function streamAnthropic(system: string, user: string, onToken: (t: string
 
 async function streamOpenAI(system: string, user: string, onToken: (t: string) => void, maxTokens: number): Promise<string> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    signal: AbortSignal.timeout(240_000),
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${config.OPENAI_API_KEY}` },
     body: JSON.stringify({ model: config.LLM_MODEL, max_tokens: maxTokens, stream: true, messages: [{ role: "system", content: system }, { role: "user", content: user }] }),
@@ -150,6 +154,12 @@ function streamStub(onToken: (t: string) => void): string {
   const s = "Décris-moi ton influenceur (niche, style, histoire) et je construis sa fiche avec toi. (Mode démo : clé LLM non configurée.)";
   onToken(s);
   return s;
+}
+
+/** Sans clé : texte factice en développement seulement — en production, refus net (rien ne doit être rendu pour de l'argent sur un texte bidon). */
+function noKey(): string {
+  if (config.NODE_ENV === "production") throw new Error("Aucune clé de fournisseur de texte configurée : génération refusée.");
+  return stub();
 }
 
 function stub(): string {

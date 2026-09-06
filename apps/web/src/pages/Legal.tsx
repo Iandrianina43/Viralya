@@ -1,9 +1,11 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { api } from "../api";
 
 // Pages légales (7 sept. 2026). MODÈLE à faire relire par un juriste avant ouverture commerciale :
 // les mentions entre crochets sont à compléter par l'éditeur (raison sociale, adresse, SIREN…).
 
-const EDITOR = "[Éditeur : raison sociale, forme, capital, siège, RCS/SIREN, contact]";
+const EDITOR_PLACEHOLDER = "[Éditeur : raison sociale, forme, capital, siège, RCS/SIREN, contact — à renseigner dans LEGAL_EDITOR]";
 const UPDATED = "7 septembre 2026";
 
 function Page({ title, children }: { title: string; children: React.ReactNode }) {
@@ -11,7 +13,7 @@ function Page({ title, children }: { title: string; children: React.ReactNode })
     <div className="min-h-screen bg-paper">
       <div className="max-w-3xl mx-auto px-5 py-10">
         <div className="flex items-center justify-between mb-8">
-          <Link to="/" className="font-bold text-ink text-lg">Viralya</Link>
+          <Link to="/" className="font-bold text-ink text-lg">← Viralya</Link>
           <div className="flex gap-4 text-sm text-slate-500">
             <Link to="/cgu" className="hover:text-ink">Conditions d'utilisation</Link>
             <Link to="/confidentialite" className="hover:text-ink">Confidentialité</Link>
@@ -26,6 +28,8 @@ function Page({ title, children }: { title: string; children: React.ReactNode })
 }
 
 export function Legal({ page }: { page: "cgu" | "privacy" }) {
+  const [EDITOR, setEditor] = useState(EDITOR_PLACEHOLDER);
+  useEffect(() => { api.publicConfig().then((c) => { if (c.legal_editor) setEditor(c.legal_editor); }).catch(() => {}); }, []);
   if (page === "privacy") {
     return (
       <Page title="Politique de confidentialité">

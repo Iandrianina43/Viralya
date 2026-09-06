@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Loader2, Megaphone, Plus, Sparkles, Trash2, 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type Avatar, type UgcBeat, type UgcCampaign, type UgcCampaignInput, type UgcEstimate, type UgcVariant } from "../api";
+import { ConfirmModal } from "../components/Modal";
 import { Button, useToast } from "../components/ui";
 
 // ─────────────────────────────────────────────────────────────
@@ -89,6 +90,8 @@ export function Ugc() {
     try { const r = await api.updateVariant(v.id, { status: v.status === "archived" ? "scripted" : "archived" }); setCurrent((c) => (c ? { ...c, variants: c.variants?.map((x) => (x.id === v.id ? r.variant : x)) } : c)); }
     catch (e) { toast.push("warn", String((e as Error).message ?? e)); }
   };
+  // Confirmation avant une action payante, irréversible ou publique.
+  const [confirmAct, setConfirmAct] = useState<{ title: string; message: string; danger?: boolean; confirmLabel?: string; run: () => void } | null>(null);
   const removeCampaign = async (cid: string) => {
     try { await api.deleteCampaign(cid); await loadList(); if (id === cid) nav("/ugc"); } catch (e) { toast.push("warn", String((e as Error).message ?? e)); }
   };
@@ -182,7 +185,7 @@ export function Ugc() {
             <Link to="/ugc" className="text-slate-500 hover:underline">← Campagnes</Link>
             <span className="text-slate-300">/</span>
             <span className="font-semibold text-ink">{current.name}</span>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full ${STATUS[current.status]?.cls ?? "bg-slate-100 text-slate-500"}`}>{current.status}</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full ${STATUS[current.status]?.cls ?? "bg-slate-100 text-slate-500"}`}>{STATUS[current.status]?.label ?? current.status}</span>
             <div className="ml-auto flex items-center gap-2 text-xs"><span className="text-slate-500">Qualité</span>{(["720p", "1080p"] as const).map((r) => <button key={r} onClick={() => setResolution(r)} className={`px-2 py-0.5 rounded-full border ${resolution === r ? "border-accent bg-accent text-white" : "border-slate-200 text-slate-500"}`}>{r}</button>)}</div>
           </div>
           <div className="card p-4 mb-4 grid md:grid-cols-[auto_1fr] gap-4">
@@ -247,14 +250,16 @@ export function Ugc() {
                   <div className="text-xs text-slate-500 mt-0.5">{c.brand} · {vs.length} variante{vs.length > 1 ? "s" : ""}{ready ? ` · ${ready} vidéo${ready > 1 ? "s" : ""} prête${ready > 1 ? "s" : ""}` : ""} · {c.matrix.avatar_ids.length} influenceur{c.matrix.avatar_ids.length > 1 ? "s" : ""}</div>
                   <div className="text-[11px] text-slate-400 mt-1">{c.matrix.angles.join(" · ")}</div>
                 </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full ${STATUS[c.status]?.cls ?? "bg-slate-100 text-slate-500"}`}>{c.status}</span>
-                <button onClick={() => void removeCampaign(c.id)} className="text-slate-300 hover:text-rose-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full ${STATUS[c.status]?.cls ?? "bg-slate-100 text-slate-500"}`}>{STATUS[c.status]?.label ?? c.status}</span>
+                <button onClick={() => setConfirmAct({ title: `Supprimer la campagne « ${c.name} » ?`, message: "Ses scripts et ses variantes sont supprimés définitivement (les vidéos déjà produites restent dans Contenus).", danger: true, run: () => void removeCampaign(c.id) })} className="text-slate-300 hover:text-rose-600" aria-label="Supprimer la campagne"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
             );
           })}
           {!campaigns.length && !creating && <div className="card p-10 text-center text-sm text-slate-500 md:col-span-2">Aucune campagne. Crée la première : un produit, une marque, tes influenceurs, et le système écrit toutes les variantes.</div>}
         </div>
       )}
+      <ConfirmModal open={!!confirmAct} title={confirmAct?.title ?? ""} message={confirmAct?.message ?? ""} danger={confirmAct?.danger} confirmLabel={confirmAct?.confirmLabel ?? "Confirmer"}
+        onConfirm={() => { const c = confirmAct; setConfirmAct(null); c?.run(); }} onClose={() => setConfirmAct(null)} />
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { api, type AvatarLocation } from "../api";
 import { ConfirmModal, Modal } from "./Modal";
 
+import { errMsg } from "../lib/errMsg";
 // ─────────────────────────────────────────────────────────────
 // Univers : les lieux de vie récurrents de l'avatar (sa chambre, son café…).
 // Ces décors sont réutilisés dans toutes ses vidéos → cohérence de sa vie.
@@ -26,7 +27,7 @@ export function Universe({ avatarId }: { avatarId: string }) {
       setLoading(false);
       if (r.locations.length === 0) setOpen(true); // univers vide → on montre l'invitation à le créer
     })
-    .catch((e) => { setErr(String(e)); setLoading(false); });
+    .catch((e) => { setErr(errMsg(e)); setLoading(false); });
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [avatarId]);
 
   // Tant que des images de référence manquent (génération en cours), on rafraîchit.
@@ -42,20 +43,20 @@ export function Universe({ avatarId }: { avatarId: string }) {
   const generate = async () => {
     setGenerating(true); setErr(null);
     try { const r = await api.generateUniverse(avatarId); setLocations(r.locations); }
-    catch (e) { setErr(String(e)); } finally { setGenerating(false); }
+    catch (e) { setErr(errMsg(e)); } finally { setGenerating(false); }
   };
 
   const regen = async (loc: AvatarLocation) => {
     setBusy(loc.id); setErr(null);
     try { const r = await api.regenerateLocation(avatarId, loc.id); setLocations((ls) => ls.map((l) => (l.id === loc.id ? r.location : l))); }
-    catch (e) { setErr(String(e)); } finally { setBusy(null); }
+    catch (e) { setErr(errMsg(e)); } finally { setBusy(null); }
   };
 
   const doDelete = async () => {
     if (!confirmDel) return;
     const locId = confirmDel.id; setConfirmDel(null);
     try { await api.deleteLocation(avatarId, locId); setLocations((ls) => ls.filter((l) => l.id !== locId)); }
-    catch (e) { setErr(String(e)); }
+    catch (e) { setErr(errMsg(e)); }
   };
 
   const add = async () => {
@@ -65,7 +66,7 @@ export function Universe({ avatarId }: { avatarId: string }) {
       const r = await api.createLocation(avatarId, { name: addName.trim(), description: addDesc.trim() });
       setLocations((ls) => [...ls, r.location]);
       setAddOpen(false); setAddName(""); setAddDesc("");
-    } catch (e) { setErr(String(e)); } finally { setBusy(null); }
+    } catch (e) { setErr(errMsg(e)); } finally { setBusy(null); }
   };
 
   return (
