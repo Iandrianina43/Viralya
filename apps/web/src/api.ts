@@ -2,7 +2,10 @@
 // Chaque appel porte la session (Bearer) et l'organisation active (x-org-id).
 import { authHeaders, signalUnauthorized } from "./lib/authToken";
 
-export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api";
+// En production, le front et l'API sont servis par Express sur le même domaine.
+// Une URL relative évite d'intégrer localhost dans le bundle lorsque le fichier
+// .env local (ignoré par Git) n'est pas présent sur le serveur de déploiement.
+export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 export type VideoProviderName = "piapi" | "stub";
 
