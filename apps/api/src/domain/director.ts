@@ -83,7 +83,10 @@ function normalizeInserts(raw: unknown, texte: string): SceneInsert[] | undefine
     if (!anchor || !t.includes(fold(anchor))) continue;
     const desc = str(i?.desc);
     // Sans cadrage valide : une description → illustration de ce dont elle parle, sinon le décor.
-    const framing: InsertFraming = INSERT_FRAMINGS.includes(i?.framing as InsertFraming) ? (i!.framing as InsertFraming) : desc ? "illustration" : "location";
+    let framing: InsertFraming = INSERT_FRAMINGS.includes(i?.framing as InsertFraming) ? (i!.framing as InsertFraming) : desc ? "illustration" : "location";
+    // Garde-fou (tests du 4-6 sept. : le modèle choisit « close » pour un grelot, des litchis…) : un
+    // cadrage sur elle n'est gardé que si la description parle d'elle ; sinon on illustre la chose décrite.
+    if (["close", "full", "selfie"].includes(framing) && desc && !/^(she|her|selfie|the woman|voahangy)\b/i.test(desc) && !/\b(her face|her outfit|herself|smiling)\b/i.test(desc)) framing = "illustration";
     if (framing === "illustration" && !desc) continue;
     out.push({ anchor, framing, ...(desc ? { desc } : {}) });
     if (out.length >= 2) break;
@@ -437,8 +440,8 @@ CHAQUE SCÈNE EMBARQUE SA DIRECTION — champs séparés, en ANGLAIS, AUCUN cham
 // rendus séparés, histoire hachée, « scripts pas naturels ». Un seul rendu = une seule tenue, une
 // seule voix, un récit d'une traite.
 const SINGLE_TAKE_RULES = `RÈGLES — PLAN-SÉQUENCE UNIQUE (UNE seule vidéo de 30 secondes, sans montage, générée d'un coup) :
-- Renvoie EXACTEMENT UNE scène : "mode":"talk", "duration_sec":30, "location_key" = le lieu unique de l'histoire.
-- "texte" = TOUT ce qu'elle dit pendant les 30 secondes, d'une traite : 50 à 65 mots MAXIMUM (≈ 2,3 mots par seconde, au-delà la fin est coupée). Elle raconte à une amie ce qui vient de lui arriver, dans l'ordre : 1) une phrase simple qui situe (où elle est, ce qu'elle fait), 2) ce qui s'est passé, 3) la chute ou la question finale.
+- Renvoie EXACTEMENT UNE scène : "mode":"talk", "duration_sec":30, "location_key" = LE LIEU OÙ L'HISTOIRE SE PASSE. Si ce lieu n'existe pas dans son univers, crée-le avec "new_location" (scope "oneoff") — ne déplace JAMAIS l'histoire dans un autre décor pour réutiliser un lieu existant, et ne la raconte jamais « après coup » depuis chez elle : on la filme SUR PLACE, pendant que ça arrive.
+- "texte" = TOUT ce qu'elle dit pendant la vidéo, d'une traite : 45 à 60 mots, JAMAIS plus de 60 (≈ 2,3 mots par seconde ; la vidéo est coupée net à 30 s). Elle raconte à une amie ce qui lui arrive, dans l'ordre : 1) une phrase simple qui situe (où elle est, ce qu'elle fait), 2) ce qui se passe, 3) la chute ou la question finale.
 - "action" : ce qu'elle FAIT pendant qu'elle parle, en lien avec le récit (assise à la table, la carte en main, l'assiette arrive, elle goûte…).
 - "shots" : le DÉCOUPAGE en 3 à 5 plans à l'intérieur de la vidéo ([{"t":"0-7s","desc":"..."}, …]) couvrant les 30 s : un changement d'angle par temps fort du récit (plan moyen face caméra, gros plan sur ce qu'elle montre ou sur son visage, plan plus large avec le décor, retour face caméra pour la chute). Chaque "desc" (EN) dit l'angle ET ce qui se passe. Elle parle à la caméra pendant toute la vidéo ; même personne, même tenue, même lieu d'un plan à l'autre.
 - "inserts" : 0 à 2 illustrations (voir ci-dessus) ancrées sur des mots exacts du texte.

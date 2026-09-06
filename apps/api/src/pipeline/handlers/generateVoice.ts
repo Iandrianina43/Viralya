@@ -52,6 +52,8 @@ export async function generateVoiceJob(job: JobRow): Promise<void> {
     shot.duration = shot.role === "talk" ? Math.max(2, Math.ceil(tts.seconds + 0.3)) : clampDuration(Math.max(shot.duration, Math.ceil(tts.seconds + 0.5)));
     shot.phase = "waiting";
     say(`🎙️ ${shot.titre} : voix générée (${tts.seconds.toFixed(1)} s, ${tts.model})`);
+    // Prise unique : Seedance 2.5 s'arrête à 30 s, la fin d'un texte trop long serait coupée.
+    if (shot.role === "talk" && tts.seconds > 28.5) say(`⚠️ ${shot.titre} : texte trop long (${tts.seconds.toFixed(0)} s de parole pour 30 s max) — raccourcis-le et régénère, sinon la fin sera coupée`);
     logger.info("hybrid_voice_done", { itemId: id, idx: shot.idx, seconds: tts.seconds, model: tts.model });
   }
   // Un plan sans texte n'a pas de voix : il est prêt tel quel.

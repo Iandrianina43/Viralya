@@ -61,7 +61,11 @@ for (const sc of scenes) {
 
 // DRY_RUN=1 : on s'arrête ici (histoire + découpage seulement, ≈ 0,02 $ de LLM, aucune vidéo).
 if (process.env.DRY_RUN) {
-  log(`Texte lu d'affilée :\n${scenes.map((s) => s.texte).join(" ")}`);
+  log(`Texte lu d'affilée (${scenes.map((s) => s.texte).join(" ").split(/\s+/).length} mots) :\n${scenes.map((s) => s.texte).join(" ")}`);
+  for (const sc of scenes) {
+    log(`  lieu : ${sc.location_key ?? "-"}${sc.new_location ? ` (NOUVEAU : ${sc.new_location.name})` : ""} · caméra : ${sc.camera}`);
+    for (const sh of sc.shots) log(`    plan ${sh.t.padEnd(7)} ${sh.desc}`);
+  }
   process.exit(0);
 }
 
