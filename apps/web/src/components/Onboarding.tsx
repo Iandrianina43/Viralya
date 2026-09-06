@@ -62,7 +62,7 @@ export function Onboarding({ avatars, content }: { avatars: Avatar[]; content: C
         <div>
           <div className="text-xs font-semibold uppercase tracking-wide text-accent">Premiers pas</div>
           <h2 className="text-lg font-bold text-ink mt-0.5">Viralya en 8 étapes : de l'influenceur à la publication</h2>
-          <p className="text-sm text-slate-500 mt-1">Chaque étape se coche toute seule quand c'est fait. {next ? <>Prochaine : <span className="font-medium text-ink">{next.title}</span>.</> : "Tout est en place."}</p>
+          <p className="text-sm text-slate-500 mt-1">Chaque étape se coche toute seule quand c'est fait. {next ? <>Prochaine : <span className="font-medium text-ink">{next.title}</span>.</> : "Tout est en place."} <Link to="/bienvenue" className="text-accent hover:underline">Voir le guide complet →</Link></p>
         </div>
         <button onClick={close} className="text-slate-400 hover:text-slate-600 p-1" title="Masquer"><X className="w-4 h-4" /></button>
       </div>

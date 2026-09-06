@@ -1,4 +1,4 @@
-import { Building2, ChevronDown, ClipboardCheck, LayoutDashboard, ListChecks, LogOut, Megaphone, Menu, Plus, Settings as SettingsIcon, Users, X } from "lucide-react";
+import { Building2, ChevronDown, ClipboardCheck, Compass, LayoutDashboard, ListChecks, LogOut, Megaphone, Menu, Plus, Settings as SettingsIcon, Users, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth";
@@ -17,8 +17,11 @@ import { Login } from "./pages/Login";
 import { Settings } from "./pages/Settings";
 import { Studio } from "./pages/Studio";
 import { Tasks } from "./pages/Tasks";
+import { Welcome } from "./pages/Welcome";
+import { welcomeSeen } from "./lib/journey";
 
 const NAV = [
+  { to: "/bienvenue", label: "Guide", icon: Compass },
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/avatars", label: "Influenceurs", icon: Users },
   { to: "/content", label: "Contenus", icon: ClipboardCheck },
@@ -160,6 +163,8 @@ function Shell() {
   }
 
   if (!user) return <Login />;
+  // Première connexion : le guide de démarrage s'ouvre une fois, puis reste dans le menu.
+  if (!welcomeSeen() && location.pathname !== "/bienvenue") return <Navigate to="/bienvenue" replace />;
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -184,6 +189,7 @@ function Shell() {
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/bienvenue" element={<Welcome />} />
               <Route path="/avatars" element={<Avatars />} />
               <Route path="/avatars/create" element={<CreateAvatar />} />
               <Route path="/avatars/create/:draftId" element={<CreateAvatar />} />
