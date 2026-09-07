@@ -80,6 +80,7 @@ export interface Setup {
   elevenlabs: { configured: boolean };
   stripe?: { configured: boolean };
   email?: { configured: boolean };
+  publisher?: { configured: boolean; webhook: boolean };
   default_video_provider: string;
 }
 
@@ -554,9 +555,10 @@ export const api = {
     req<{ profile: SocialProfile }>(`/social/avatars/${avatarId}/profile`, { method: "PATCH", body: JSON.stringify(b) }),
   socialFeed: (avatarId: string, network: string) => req<SocialFeed>(`/social/avatars/${avatarId}/feed?network=${network}`),
   publishNow: (contentId: string) => req<{ ok: boolean; mode: "simulated" | "real"; post?: SocialPost; job_id?: string }>(`/social/content/${contentId}/publish-now`, { method: "POST", body: "{}" }),
-  listConnections: () => req<{ connections: SocialConnection[]; provider_configured: boolean }>("/social/connections"),
-  createConnection: (b: { provider: "ayrshare" | "simulated"; avatar_id?: string | null; profile_key?: string; networks: string[]; display_name?: string }) =>
-    req<{ connection: SocialConnection }>("/social/connections", { method: "POST", body: JSON.stringify(b) }),
+  listConnections: (avatarId?: string) => req<{ connections: SocialConnection[]; provider_configured: boolean }>(`/social/connections${avatarId ? `?avatar_id=${avatarId}` : ""}`),
+  // Connexion d'un réseau : l'API renvoie l'URL d'autorisation (OAuth hébergé par Zernio) ; retour sur la page du compte social.
+  connectSocial: (b: { avatar_id: string; network: string; consent: boolean }) => req<{ auth_url: string }>("/social/connections/connect", { method: "POST", body: JSON.stringify(b) }),
+  syncConnections: (avatarId: string) => req<{ connections: SocialConnection[] }>("/social/connections/sync", { method: "POST", body: JSON.stringify({ avatar_id: avatarId }) }),
   deleteConnection: (id: string) => req<{ ok: boolean }>(`/social/connections/${id}`, { method: "DELETE" }),
   syncStats: (avatarId?: string) => req<{ ok: boolean; job_id: string }>("/social/sync-stats", { method: "POST", body: JSON.stringify(avatarId ? { avatar_id: avatarId } : {}) }),
 
@@ -590,8 +592,18 @@ export interface SocialPost {
   id: string; type: string; network: string; title: string | null; caption: string; hashtags: string[]; published_at: string | null; scheduled_at: string | null; status: string;
   cover_url: string | null; video_url: string | null; image_urls: string[]; stats: PostStats; real: boolean; ai_label: boolean; external_url: string | null;
 }
-export interface SocialFeed { profile: SocialProfile & { followers: number; posts: number; total_views: number; total_likes: number; engagement_rate: number }; posts: SocialPost[]; upcoming: SocialPost[] }
-export interface SocialConnection { id: string; org_id: string; avatar_id: string | null; provider: "ayrshare" | "simulated"; profile_key: string | null; networks: string[]; display_name: string | null; status: string; created_at: string }
+export interface SocialFeed {
+  profile: SocialProfile & { followers: number; posts: number; total_views: number; total_likes: number; engagement_rate: number };
+  posts: SocialPost[];
+  upcoming: SocialPost[];
+  connection: { id: string; handle: string | null; profile_url: string | null; picture_url: string | null; followers: number | null; status: string } | null;
+}
+/** Compte réel connecté via Zernio (un par réseau et par influenceur). */
+export interface SocialConnection {
+  id: string; org_id: string; avatar_id: string | null; provider: "zernio" | "ayrshare" | "simulated"; profile_key: string | null; networks: string[];
+  display_name: string | null; status: "active" | "disabled" | "error"; handle?: string | null; profile_url?: string | null; picture_url?: string | null;
+  followers?: number | null; last_synced_at?: string | null; meta?: Record<string, unknown>; created_at: string;
+}
 
 export interface UgcProduct { name: string; description: string; image_url?: string | null; url?: string | null; price?: string | null; key_benefits?: string[] }
 export interface UgcBeat { beat: "hook" | "problem" | "product" | "demo" | "benefits" | "proof" | "cta"; seconds: number; line: string; action: string }

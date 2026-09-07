@@ -60,6 +60,25 @@ export async function notifyContentStatus(contentItemId: string, status: "needs_
   }
 }
 
+/** Compte social déconnecté par le réseau (jeton expiré ou révoqué) : il faut le reconnecter. */
+export async function notifyConnectionLost(connectionId: string): Promise<void> {
+  if (!emailConfigured()) return;
+  const { data: conn } = await supabase.from("social_connections").select("org_id, avatar_id, networks, handle, meta").eq("id", connectionId).maybeSingle();
+  if (!conn?.org_id) return;
+  const { data: avatar } = conn.avatar_id ? await supabase.from("avatars").select("name").eq("id", conn.avatar_id).maybeSingle() : { data: null };
+  const net = (conn.networks as string[] | null)?.[0] ?? "réseau";
+  const reason = String((conn.meta as Record<string, unknown> | null)?.reason ?? "").slice(0, 160);
+  await notifyOrg(
+    String(conn.org_id),
+    `Compte ${net} à reconnecter${avatar?.name ? ` (${avatar.name})` : ""}`,
+    emailLayout(
+      `Le compte ${net}${conn.handle ? ` @${conn.handle}` : ""} est déconnecté`,
+      `<p>Le réseau a invalidé l'accès${reason ? ` : <em>${reason}</em>` : ""}. Les publications prévues sur ce réseau resteront en attente tant que le compte n'est pas reconnecté.</p>`,
+      { label: "Reconnecter le compte", url: `${site()}/avatars/${conn.avatar_id ?? ""}/social` },
+    ),
+  );
+}
+
 /** Seuil de budget atteint (80 % ou 100 %). */
 export async function notifyBudget(orgId: string, spentUsd: number, budgetUsd: number, level: 80 | 100): Promise<void> {
   await notifyOrg(

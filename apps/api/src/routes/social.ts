@@ -1,20 +1,26 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import { config } from "../config";
+import { disconnect, handleZernioEvent, listConnections, publisherConfigured, recordEvent, startConnect, syncAvatarConnections, verifyZernioSignature } from "../domain/connections";
 import { ensureProfile, getFeed, publishSimulated, updateProfile, type SocialNetwork } from "../domain/social";
+import { activeConnection } from "../domain/publishing";
 import { asyncHandler } from "../lib/asyncHandler";
-import { badRequest, HttpError, notFound } from "../lib/httpError";
+import { badRequest, HttpError } from "../lib/httpError";
 import { requireAvatar, requireContentItem } from "../lib/scope";
+import { logger } from "../logger";
 import { enqueue } from "../queue/queue";
-import { supabase } from "../supabase";
 
 // ─────────────────────────────────────────────────────────────
 // COMPTE SOCIAL — /api/social
 //   GET   /avatars/:id/profile?network=       profil (créé au premier accès)
 //   PATCH /avatars/:id/profile                {network, handle, display_name, bio, link}
 //   GET   /avatars/:id/feed?network=          profil + posts publiés (stats du moment) + à venir
-//   POST  /content/:id/publish-now            publication immédiate (simulée ou réelle)
-//   GET   /connections · POST /connections · DELETE /connections/:id   (phase 4, Ayrshare)
+//   POST  /content/:id/publish-now            publication immédiate (réelle si un compte est connecté, sinon simulée)
+//   GET   /connections?avatar_id=             comptes connectés (Zernio) de l'espace / de l'influenceur
+//   POST  /connections/connect                {avatar_id, network, consent} → {auth_url} (OAuth hébergé par Zernio)
+//   POST  /connections/sync                   {avatar_id} → relit les comptes du profil Zernio
+//   DELETE /connections/:id                   déconnexion (chez Zernio puis chez nous)
 //   POST  /sync-stats                         remontée des statistiques réelles
+//   POST  /api/social/zernio/webhook          (public, signé) — monté dans routes/index.ts sur le corps brut
 // ─────────────────────────────────────────────────────────────
 export const socialRouter = Router();
 
@@ -45,14 +51,18 @@ socialRouter.get(
   }),
 );
 
-// « Publier maintenant » depuis la revue : contenu prêt (needs_review / scheduled) → publication immédiate.
+// « Publier maintenant » depuis la revue : contenu prêt (needs_review / scheduled / failed) → publication immédiate.
 socialRouter.post(
   "/content/:id/publish-now",
   asyncHandler(async (req, res) => {
-    const item = await requireContentItem(req.org!.id, String(req.params.id), "id, status, avatar_id, title, network");
+    const item = await requireContentItem(req.org!.id, String(req.params.id), "id, status, avatar_id, title, network, external_post_id, publish_provider, payload");
     if (!["needs_review", "scheduled", "failed"].includes(item.status)) throw new HttpError(409, `statut ${item.status} non publiable`);
-    const { data: conn } = await supabase.from("social_connections").select("id").eq("avatar_id", item.avatar_id).eq("status", "active").contains("networks", [item.network]).maybeSingle();
-    if (conn && config.AYRSHARE_API_KEY) {
+    if (item.publish_provider === "zernio" && item.external_post_id && (item.payload as Record<string, unknown> | null)?.publish_state === "publishing") {
+      throw new HttpError(409, "Publication déjà en cours chez le fournisseur : patiente quelques minutes.");
+    }
+    const conn = await activeConnection(String(item.avatar_id), String(item.network));
+    if (conn) {
+      if (!publisherConfigured()) throw new HttpError(503, "Un compte est connecté mais la publication réelle n'est pas configurée sur ce serveur.");
       const job = await enqueue("publish", { content_item_id: item.id, avatar_id: item.avatar_id }, { contentItemId: item.id, avatarId: item.avatar_id, label: item.title ?? "Publication", maxAttempts: 1 });
       res.status(202).json({ ok: true, mode: "real", job_id: job.id });
       return;
@@ -65,35 +75,38 @@ socialRouter.post(
 socialRouter.get(
   "/connections",
   asyncHandler(async (req, res) => {
-    const { data } = await supabase.from("social_connections").select("*").eq("org_id", req.org!.id).order("created_at", { ascending: false });
-    res.json({ connections: data ?? [], provider_configured: !!config.AYRSHARE_API_KEY });
+    const avatarId = req.query.avatar_id ? String(req.query.avatar_id) : null;
+    if (avatarId) await requireAvatar(req.org!.id, avatarId, "id");
+    res.json({ connections: await listConnections(req.org!.id, avatarId), provider_configured: publisherConfigured() });
   }),
 );
 
 socialRouter.post(
-  "/connections",
+  "/connections/connect",
   asyncHandler(async (req, res) => {
-    const avatarId = req.body?.avatar_id ? String(req.body.avatar_id) : null;
-    if (avatarId) await requireAvatar(req.org!.id, avatarId, "id");
-    const networks = (Array.isArray(req.body?.networks) ? req.body.networks : []).filter((n: unknown) => NETWORKS.includes(n as SocialNetwork));
-    if (!networks.length) throw badRequest("networks requis");
-    const provider = req.body?.provider === "ayrshare" ? "ayrshare" : "simulated";
-    if (provider === "ayrshare" && !config.AYRSHARE_API_KEY) throw badRequest("AYRSHARE_API_KEY absente de l'environnement : la publication réelle n'est pas configurée.");
-    const { data, error } = await supabase
-      .from("social_connections")
-      .insert({ org_id: req.org!.id, avatar_id: avatarId, provider, profile_key: req.body?.profile_key ? String(req.body.profile_key) : null, networks, display_name: req.body?.display_name ? String(req.body.display_name) : null })
-      .select("*")
-      .single();
-    if (error || !data) throw new Error(`connection insert: ${error?.message ?? ""}`);
-    res.status(201).json({ connection: data });
+    const avatarId = String(req.body?.avatar_id ?? "");
+    if (!avatarId) throw badRequest("avatar_id requis");
+    await requireAvatar(req.org!.id, avatarId, "id");
+    if (req.body?.consent !== true) throw badRequest("Confirme que ces comptes t'appartiennent et que les contenus seront publiés avec la mention « généré par IA ».");
+    const url = await startConnect({ orgId: req.org!.id, userId: req.user?.id ?? null, avatarId, network: network(req.body?.network) });
+    res.json({ auth_url: url });
+  }),
+);
+
+socialRouter.post(
+  "/connections/sync",
+  asyncHandler(async (req, res) => {
+    const avatarId = String(req.body?.avatar_id ?? "");
+    if (!avatarId) throw badRequest("avatar_id requis");
+    await requireAvatar(req.org!.id, avatarId, "id");
+    res.json({ connections: await syncAvatarConnections(avatarId) });
   }),
 );
 
 socialRouter.delete(
   "/connections/:id",
   asyncHandler(async (req, res) => {
-    const { data } = await supabase.from("social_connections").delete().eq("org_id", req.org!.id).eq("id", String(req.params.id)).select("id");
-    if (!data?.length) throw notFound("Connexion");
+    await disconnect({ orgId: req.org!.id, userId: req.user?.id ?? null, connectionId: String(req.params.id) });
     res.json({ ok: true });
   }),
 );
@@ -108,3 +121,24 @@ socialRouter.post(
     res.status(202).json({ ok: true, job_id: job.id });
   }),
 );
+
+/** Webhook Zernio : corps BRUT (monté avant express.json), signature HMAC vérifiée, réponse immédiate (délai Zernio : 5 s). */
+export const zernioWebhook: RequestHandler = async (req, res) => {
+  if (!config.ZERNIO_API_KEY || !config.ZERNIO_WEBHOOK_SECRET) {
+    res.status(503).json({ error: "webhook non configuré" });
+    return;
+  }
+  const raw = req.body as unknown;
+  if (!Buffer.isBuffer(raw) || !verifyZernioSignature(raw, req.get("x-zernio-signature"))) {
+    logger.warn("zernio_webhook_bad_signature");
+    res.status(400).json({ error: "signature invalide" });
+    return;
+  }
+  let payload: { id?: string; event?: string };
+  try { payload = JSON.parse(raw.toString("utf8")); } catch { res.status(400).json({ error: "JSON invalide" }); return; }
+  const eventId = String(payload?.id ?? req.get("x-zernio-event-id") ?? "");
+  const type = String(payload?.event ?? "");
+  if (eventId && !(await recordEvent(eventId, type))) { res.json({ ok: true, duplicate: true }); return; }
+  res.json({ ok: true });
+  handleZernioEvent(payload as Parameters<typeof handleZernioEvent>[0]).catch((err) => logger.error("zernio_webhook_failed", { type, id: eventId, err: String((err as Error)?.message ?? err).slice(0, 200) }));
+};

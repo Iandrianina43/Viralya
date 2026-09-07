@@ -11,7 +11,7 @@ import { calendarRouter } from "./calendar";
 import { contentRouter } from "./content";
 import { healthRouter } from "./health";
 import { orgsRouter } from "./orgs";
-import { socialRouter } from "./social";
+import { socialRouter, zernioWebhook } from "./social";
 import { studioRouter } from "./studio";
 import { ugcRouter } from "./ugc";
 
@@ -35,6 +35,8 @@ export function registerRoutes(app: Express): void {
   app.use("/api", rateLimit(900, 5 * 60_000, "ip"));
   // Webhook Stripe : corps brut pour la vérification de signature, AVANT le parseur JSON.
   app.post("/api/billing/webhook", express.raw({ type: "application/json", limit: "1mb" }), stripeWebhook);
+  // Webhook Zernio (publications confirmées, comptes déconnectés) : même principe, signature HMAC.
+  app.post("/api/social/zernio/webhook", express.raw({ type: "*/*", limit: "1mb" }), zernioWebhook);
   app.use(express.json({ limit: "2mb" }));
   app.use(healthRouter); // /health à la racine (supervision)
   app.use("/api", healthRouter);

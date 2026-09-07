@@ -1,14 +1,14 @@
 import { Bookmark, CalendarClock, ExternalLink, Eye, Heart, Link2, MessageCircle, Pencil, Play, RefreshCw, Share2, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, type Avatar, type SocialConnection, type SocialFeed, type SocialPost } from "../api";
 import { AvatarPhoto } from "../components/AvatarPhoto";
 import { ConfirmModal } from "../components/Modal";
 import { Button, useToast } from "../components/ui";
 
 // ─────────────────────────────────────────────────────────────
-// COMPTE SOCIAL (BRIEF § 9) — profil, feed, statistiques par réseau ; simulé tant qu'aucune
-// connexion réelle n'existe (phase 4 : Ayrshare, un profil par influenceur).
+// COMPTE SOCIAL (BRIEF § 9) — profil, feed, statistiques par réseau ; simulé tant qu'aucun compte
+// réel n'est connecté (Zernio : OAuth hébergé, un compte par réseau et par influenceur).
 // ─────────────────────────────────────────────────────────────
 
 const NETWORKS = [
@@ -32,7 +32,8 @@ export function Social() {
   const [open, setOpen] = useState<SocialPost | null>(null);
   const [connections, setConnections] = useState<SocialConnection[]>([]);
   const [providerOk, setProviderOk] = useState(false);
-  const [connForm, setConnForm] = useState({ profile_key: "", networks: ["instagram", "tiktok"] as string[] });
+  const [consent, setConsent] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -42,7 +43,28 @@ export function Social() {
   }, [id, network]);
   useEffect(() => { if (id) api.getAvatar(id).then((r) => setAvatar(r.avatar)).catch(() => {}); }, [id]);
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { api.listConnections().then((r) => { setConnections(r.connections.filter((c) => !c.avatar_id || c.avatar_id === id)); setProviderOk(r.provider_configured); }).catch(() => {}); }, [id]);
+  const loadConnections = useCallback(async () => {
+    if (!id) return;
+    try { const r = await api.listConnections(id); setConnections(r.connections); setProviderOk(r.provider_configured); } catch { /* affichage dégradé */ }
+  }, [id]);
+  useEffect(() => { void loadConnections(); }, [loadConnections]);
+  // Retour de la page d'autorisation du réseau (Zernio) : ?connect=zernio&connected=instagram… ou &error=…
+  const handledReturn = useRef(false);
+  useEffect(() => {
+    if (!id || searchParams.get("connect") !== "zernio" || handledReturn.current) return;
+    handledReturn.current = true;
+    const error = searchParams.get("error");
+    const errorMessage = searchParams.get("error_message");
+    const platform = searchParams.get("connected") ?? searchParams.get("platform") ?? "";
+    setSearchParams({}, { replace: true });
+    if (error) {
+      toast.push("warn", error === "oauth_denied" ? "Autorisation refusée sur le réseau : rien n'a été connecté." : `Connexion impossible (${error})${errorMessage ? ` : ${errorMessage}` : ""}.`);
+      return;
+    }
+    api.syncConnections(id)
+      .then((r) => { setConnections(r.connections); toast.push("ok", `${platform ? `${platform[0]?.toUpperCase()}${platform.slice(1)} ` : "Compte "}connecté : les prochaines publications partent en réel.`); void load(); })
+      .catch((e) => toast.push("warn", String((e as Error).message ?? e)));
+  }, [id, searchParams, setSearchParams, toast, load]);
   // Les statistiques simulées progressent dans le temps : rafraîchissement doux.
   useEffect(() => { const t = setInterval(() => void load(), 30_000); return () => clearInterval(t); }, [load]);
 
@@ -59,20 +81,34 @@ export function Social() {
     setBusy(post.id);
     try { await api.publishNow(post.id); await load(); toast.push("ok", "Publié."); } catch (e) { toast.push("warn", String((e as Error).message ?? e)); } finally { setBusy(null); }
   };
-  const addConnection = async () => {
+  const connect = async (net: string) => {
     if (!id) return;
-    setBusy("conn");
+    setBusy(`connect:${net}`);
     try {
-      const r = await api.createConnection({ provider: "ayrshare", avatar_id: id, profile_key: connForm.profile_key.trim() || undefined, networks: connForm.networks, display_name: avatar?.name });
-      setConnections((c) => [r.connection, ...c]); toast.push("ok", "Connexion enregistrée : les prochaines publications partent en réel.");
-    } catch (e) { toast.push("warn", String((e as Error).message ?? e)); } finally { setBusy(null); }
+      const r = await api.connectSocial({ avatar_id: id, network: net, consent: true });
+      window.location.assign(r.auth_url); // page d'autorisation du réseau (hébergée par Zernio), retour ici ensuite
+    } catch (e) { toast.push("warn", String((e as Error).message ?? e)); setBusy(null); }
+  };
+  const syncNow = async () => {
+    if (!id) return;
+    setBusy("sync");
+    try { const r = await api.syncConnections(id); setConnections(r.connections); await load(); toast.push("ok", "Comptes actualisés."); }
+    catch (e) { toast.push("warn", String((e as Error).message ?? e)); } finally { setBusy(null); }
+  };
+  const refreshStats = async () => {
+    if (!id) return;
+    setBusy("stats");
+    try { await api.syncStats(id); toast.push("ok", "Remontée des statistiques lancée : compte quelques minutes."); }
+    catch (e) { toast.push("warn", String((e as Error).message ?? e)); } finally { setBusy(null); }
   };
   const removeConnection = async (cid: string) => {
-    try { await api.deleteConnection(cid); setConnections((c) => c.filter((x) => x.id !== cid)); } catch (e) { toast.push("warn", String((e as Error).message ?? e)); }
+    try { await api.deleteConnection(cid); setConnections((c) => c.filter((x) => x.id !== cid)); await load(); toast.push("ok", "Compte déconnecté."); }
+    catch (e) { toast.push("warn", String((e as Error).message ?? e)); }
   };
 
   const p = feed?.profile;
-  const real = connections.some((c) => c.provider === "ayrshare" && c.networks.includes(network) && c.status === "active");
+  const connOf = (net: string) => connections.find((c) => c.provider === "zernio" && c.networks.includes(net));
+  const real = connOf(network)?.status === "active";
 
   return (
     <div>
@@ -142,7 +178,10 @@ export function Social() {
       <div className="card p-4 mb-4">
         <div className="flex items-center justify-between mb-3">
           <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Feed</div>
-          <button onClick={() => void load()} className="text-slate-400 hover:text-ink" title="Actualiser"><RefreshCw className="w-3.5 h-3.5" /></button>
+          <div className="flex items-center gap-3">
+            {real && <button onClick={() => void refreshStats()} disabled={busy === "stats"} className="text-[11px] text-accent hover:underline disabled:opacity-50" title="Relire les statistiques sur le réseau">Statistiques réelles</button>}
+            <button onClick={() => void load()} className="text-slate-400 hover:text-ink" title="Actualiser"><RefreshCw className="w-3.5 h-3.5" /></button>
+          </div>
         </div>
         {!feed?.posts.length ? (
           <div className="text-sm text-slate-500 py-8 text-center">Rien de publié sur {NETWORKS.find((n) => n.id === network)?.label} pour l'instant. Approuve un contenu dans <Link to="/content" className="text-accent hover:underline">Contenus</Link>, puis « Publier maintenant » ou attends l'heure programmée.</div>
@@ -162,33 +201,55 @@ export function Social() {
         )}
       </div>
 
-      {/* Publication réelle (phase 4) */}
+      {/* Publication réelle : comptes connectés via Zernio (OAuth hébergé), un compte par réseau et par influenceur */}
       <div className="card p-4">
-        <div className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Publication réelle</div>
-        <p className="text-xs text-slate-500 mb-3">Agrégateur Ayrshare : un profil par influenceur, les réseaux choisis, le label « contenu IA » envoyé automatiquement. {providerOk ? "Publication réelle activée sur ce serveur." : "La publication réelle n'est pas encore activée sur cet espace : les connexions resteront inactives (contacte le support)."}</p>
-        {connections.length > 0 && (
-          <div className="space-y-1.5 mb-3">
-            {connections.map((c) => (
-              <div key={c.id} className="flex items-center gap-2 text-sm rounded-lg border border-slate-100 px-3 py-2">
-                <span className="font-medium text-ink">{c.provider}</span>
-                <span className="text-slate-500 text-xs">{c.networks.join(", ")}</span>
-                {c.profile_key && <span className="text-slate-400 text-xs font-mono truncate">{c.profile_key.slice(0, 8)}…</span>}
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${c.status === "active" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>{c.status}</span>
-                <button onClick={() => setConfirmAct({ title: "Déconnecter ce réseau ?", message: "Les publications réelles de cet influenceur sur ce réseau s'arrêtent immédiatement.", danger: true, run: () => void removeConnection(c.id) })} className="ml-auto text-slate-300 hover:text-rose-600" aria-label="Déconnecter"><Trash2 className="w-3.5 h-3.5" /></button>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="flex flex-wrap items-center gap-2">
-          <input className="input text-sm flex-1 min-w-[200px]" placeholder="Profile-Key Ayrshare de cet influenceur" value={connForm.profile_key} onChange={(e) => setConnForm({ ...connForm, profile_key: e.target.value })} />
-          <div className="flex gap-1">
-            {NETWORKS.map((n) => (
-              <button key={n.id} onClick={() => setConnForm({ ...connForm, networks: connForm.networks.includes(n.id) ? connForm.networks.filter((x) => x !== n.id) : [...connForm.networks, n.id] })} className={`text-xs px-2 py-1 rounded-full border ${connForm.networks.includes(n.id) ? "border-accent bg-accent text-white" : "border-slate-200 text-slate-500"}`}>{n.label}</button>
-            ))}
-          </div>
-          <Button size="sm" variant="secondary" loading={busy === "conn"} disabled={!providerOk || !connForm.networks.length} onClick={() => void addConnection()}>Connecter</Button>
+        <div className="flex items-center justify-between mb-1">
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Publication réelle</div>
+          {providerOk && connections.length > 0 && (
+            <button onClick={() => void syncNow()} disabled={busy === "sync"} className="text-slate-400 hover:text-ink disabled:opacity-50" title="Actualiser les comptes connectés"><RefreshCw className={`w-3.5 h-3.5 ${busy === "sync" ? "animate-spin" : ""}`} /></button>
+          )}
         </div>
-        <div className="text-[11px] text-slate-400 mt-2">Avant la première publication réelle : activer le label « profil généré par IA » sur Instagram et la mention IA dans la bio TikTok.</div>
+        <p className="text-xs text-slate-500 mb-3">
+          {providerOk
+            ? `Connecte les vrais comptes de ${avatar?.name ?? "l'influenceur"} : chaque contenu approuvé part sur le réseau à l'heure prévue, avec le label « généré par IA ». Un compte par réseau.`
+            : "La publication réelle n'est pas activée sur ce serveur : les contenus restent sur le compte simulé (contacte le support)."}
+        </p>
+        <div className="space-y-1.5">
+          {NETWORKS.map((n) => {
+            const c = connOf(n.id);
+            const needsFix = !!c && c.status !== "active";
+            return (
+              <div key={n.id} className="flex flex-wrap items-center gap-2 text-sm rounded-lg border border-slate-100 px-3 py-2">
+                <span className="font-medium text-ink w-20">{n.label}</span>
+                {c ? (
+                  <>
+                    {c.picture_url && <img src={c.picture_url} alt="" className="w-6 h-6 rounded-full object-cover" />}
+                    <span className="text-slate-700 truncate">@{c.handle ?? c.display_name ?? "compte"}</span>
+                    {typeof c.followers === "number" && <span className="text-slate-400 text-xs">{fmt(c.followers)} abonnés</span>}
+                    {c.profile_url && <a href={c.profile_url} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-accent" title="Voir le profil sur le réseau"><ExternalLink className="w-3.5 h-3.5" /></a>}
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${needsFix ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"}`}>{needsFix ? "à reconnecter" : "connecté"}</span>
+                    <div className="ml-auto flex items-center gap-2">
+                      {needsFix && <Button size="sm" variant="secondary" loading={busy === `connect:${n.id}`} disabled={!providerOk} onClick={() => void connect(n.id)}>Reconnecter</Button>}
+                      <button onClick={() => setConfirmAct({ title: `Déconnecter ${n.label} ?`, message: "Les publications réelles de cet influenceur sur ce réseau s'arrêtent immédiatement ; les contenus repasseront sur le compte simulé.", danger: true, confirmLabel: "Déconnecter", run: () => void removeConnection(c.id) })} className="text-slate-300 hover:text-rose-600" aria-label="Déconnecter"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-slate-400 text-xs">compte simulé</span>
+                    <div className="ml-auto"><Button size="sm" variant="secondary" loading={busy === `connect:${n.id}`} disabled={!providerOk || !consent} onClick={() => void connect(n.id)}>Connecter</Button></div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {providerOk && NETWORKS.some((n) => !connOf(n.id)) && (
+          <label className="flex items-start gap-2 text-xs text-slate-600 mt-3 cursor-pointer">
+            <input type="checkbox" className="mt-0.5" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+            <span>Je confirme que ces comptes m'appartiennent (ou que je suis autorisé à les gérer) et que les contenus y seront publiés avec la mention « généré par IA ».</span>
+          </label>
+        )}
+        <div className="text-[11px] text-slate-400 mt-2">Après la connexion : activer le label « profil généré par IA » sur Instagram et la mention IA dans la bio TikTok. Instagram exige un compte professionnel (Business ou Créateur).</div>
       </div>
 
       {open && (

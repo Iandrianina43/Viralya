@@ -15,6 +15,11 @@ const server = app.listen(config.API_PORT, () => {
   logger.info("api_listening", { port: config.API_PORT, env: config.NODE_ENV });
   ensureBucket().catch((err) => logger.error("bucket_failed", { err: String((err as Error)?.message ?? err) })); // crée le bucket si absent
   import("./auth/auth").then((m) => m.ensureBootstrapAdmin()).catch((err) => logger.warn("bootstrap_failed", { err: String((err as Error)?.message ?? err) }));
+  // Publication réelle : enregistre le webhook Zernio vers cette instance (silencieux sans clé/secret ou en local).
+  import("./domain/connections")
+    .then((m) => m.ensureZernioWebhook())
+    .then((r) => { if (!r.ok && config.ZERNIO_API_KEY) logger.warn("zernio_webhook_skipped", { reason: r.reason }); })
+    .catch((err) => logger.warn("zernio_webhook_failed", { err: String((err as Error)?.message ?? err).slice(0, 200) }));
   if (config.RUN_WORKER_INLINE) {
     startWorker();
     logger.info("worker_started_inline");

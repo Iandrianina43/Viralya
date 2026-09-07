@@ -88,7 +88,7 @@ son organisation personnelle ; un propriétaire peut ajouter des membres par ema
 | `/api/content` | session + organisation | contenus, revue (approuver, refuser, relancer, annuler), versions |
 | `/api/studio` | session + organisation | réalisateur IA, production Seedance, estimation des coûts, solde et historique PiAPI, Task Center ; formats (`/formats/script`, `/formats/estimate`, `/formats/produce`), clone (`/clone/upload`, `/clone/link`, `/clone/transcribe`), `/upload-image` |
 | `/api/calendar` | session + organisation | calendrier éditorial mensuel : génération par le stratège (job `generate_plan`), entrées éditables, production d'une entrée (vidéo en prise unique, photo, carrousel, story) |
-| `/api/social` | session + organisation | compte social par influenceur et par réseau (profil, feed, statistiques simulées ou réelles), « publier maintenant », connexions Ayrshare, remontée des stats |
+| `/api/social` | session + organisation | compte social par influenceur et par réseau (profil, feed, statistiques simulées ou réelles), « publier maintenant », comptes connectés via Zernio (`/connections/connect` → OAuth hébergé, `/connections/sync`), remontée des stats ; webhook Zernio signé sur `POST /api/social/zernio/webhook` |
 | `/api/ugc` | session + organisation | campagnes UGC : produit + matrice (influenceurs × angles × accroches × durées × CTA) → scripts en 7 temps, production vidéo par variante avec mentions légales incrustées |
 | `/api/billing` | session + organisation | forfait et budget du mois (`GET /`), registre (`/usage`), Stripe Checkout (`/checkout`), portail (`/portal`), budget manuel admin (`PUT /budget`) ; webhook Stripe signé sur `POST /api/billing/webhook` |
 | `/api/admin` | rôle admin ou `x-admin-key` | jobs globaux, reprise manuelle, déclenchement du quotidien |
@@ -137,14 +137,19 @@ meurt est remis en file automatiquement (`reap_stale_jobs`). L'annulation est co
   story = pipelines existants. Statut synchronisé avec le contenu.
 - **Compte social** (`/avatars/:id/social`) : profil par réseau (handle, bio générée, audience de départ),
   feed des contenus publiés, statistiques déterministes qui progressent sur 72 h, contenus programmés,
-  « Publier maintenant ». Réel dès qu'une connexion Ayrshare existe pour l'influenceur.
+  « Publier maintenant ». Réel dès qu'un compte du réseau est connecté pour l'influenceur (Zernio).
 - **Campagnes UGC** (`/ugc`) : produit (photo de référence pour Seedance), objectif, cible, ton, angles,
   accroches par angle (10 mécanismes), durées 20/30/45 s, CTA → scripts en 7 temps (docs/RECHERCHE-UGC.md),
   estimation, production par variante ; mentions « Collaboration commerciale » et « Images virtuelles ·
   Contenu généré par IA » incrustées pendant toute la vidéo.
 - **Onboarding** : panneau « Premiers pas » du dashboard, 8 étapes cochées d'après les données.
-- **Publication réelle** (phase 4, socle) : `providers/publisher.ts` (simulé / Ayrshare), `social_connections`,
-  labels IA envoyés, job `sync_stats` (+1 h, +6 h, +24 h, +72 h, +7 j). Recherche : docs/RECHERCHE-PUBLICATION.md.
+- **Publication réelle** (7 sept. 2026, Zernio) : `providers/zernio.ts` (client, spec OpenAPI officielle),
+  `providers/publisher.ts` (POST /posts, labels IA Instagram/TikTok/YouTube, options TikTok du créateur),
+  `domain/connections.ts` (un profil Zernio par influenceur, OAuth hébergé, synchronisation des comptes,
+  webhook signé), `domain/publishing.ts` (états : en cours → publié / échec, jamais de faux « publié »),
+  job `publish` avec suivi toutes les 45 s, job `sync_stats` (+1 h, +6 h, +24 h, +72 h, +7 j) qui relit aussi les
+  abonnés réels. Migration **0019**. Vérification : `pnpm --filter @viralya/api exec tsx scripts/zernio-check.ts --webhook`.
+  Recherche : docs/RECHERCHE-PUBLICATION.md § 5.
 - Smoke test après migration 0016 : `pnpm --filter @viralya/api exec tsx scripts/test-phase3.ts <avatar_id> [content_id]`.
 
 ## Formats vidéo et prompts Seedance (6-7 sept. 2026)
@@ -178,6 +183,8 @@ Détail et décisions : [docs/PLAN-PLATEFORME.md](docs/PLAN-PLATEFORME.md). Migr
   `usage_ledger` puis corrigé au coût réel. Paramètres › Abonnement et budget. Variables
   `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `DEFAULT_MONTHLY_BUDGET_USD`.
 - **E-mails** (Resend) : contenu prêt à valider, échec, budget à 80 % et 100 %. `RESEND_API_KEY`, `EMAIL_FROM`.
+- **Publication réelle** (Zernio) : `ZERNIO_API_KEY`, `ZERNIO_WEBHOOK_SECRET` (webhook enregistré au démarrage vers
+  `https://<site>/api/social/zernio/webhook`). Coût plateforme : 2 comptes connectés gratuits puis 6 $/compte/mois.
 - **Pilote automatique** du calendrier (case dans la page Calendrier) : les entrées planifiées partent
   J-1, 3 par passage, jamais au-delà du budget ; validation humaine conservée.
 - **Supervision** : battement de cœur du worker, `/api/health` en 503 s'il s'est tu (à brancher sur UptimeRobot).
@@ -189,7 +196,7 @@ Détail et décisions : [docs/PLAN-PLATEFORME.md](docs/PLAN-PLATEFORME.md). Migr
 Voir la section « Phases » de [docs/PLAN-REFONTE.md](docs/PLAN-REFONTE.md) :
 0 fondations SaaS (fait) → 1 Character Bible et photos (fait) → 2 vidéo v2 (fait, Seedance 2.5) → 3 calendrier,
 compte simulé, UGC, onboarding (codé, à tester après la migration 0016) → 4 publication réelle et analytics
-(socle codé : Ayrshare, à activer avec une clé).
+(codé avec Zernio le 7 sept. 2026 : à activer avec `ZERNIO_API_KEY` + `ZERNIO_WEBHOOK_SECRET` et la migration 0019).
 
 Phase 2, point de départ : le français parlé des vidéos Seedance est mauvais parce que Seedance synthétise
 lui-même la voix (les audios de référence ne guident que le rythme). La voix sera générée par ElevenLabs v3 puis

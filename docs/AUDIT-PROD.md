@@ -98,6 +98,7 @@ corrigé le jour même, ce qui reste à faire par priorité, et ce qui dépend d
 1. Appliquer les migrations **0017** puis **0018** dans Supabase.
 2. Poser `LEGAL_EDITOR` (raison sociale, adresse, contact) et faire relire les pages légales.
 3. Créer les comptes Stripe et Resend, poser les clés, vérifier le domaine d'envoi.
-4. Choisir Ayrshare ou Zernio pour la publication réelle.
+4. Publication réelle : **Zernio retenu et codé le 7 septembre** (voir docs/RECHERCHE-PUBLICATION.md § 5). À faire :
+   créer le compte Zernio, poser `ZERNIO_API_KEY` et `ZERNIO_WEBHOOK_SECRET`, appliquer la migration **0019**.
 5. Décider des tarifs des forfaits (indicatifs dans `domain/billing.ts`).
 6. Brancher un moniteur externe sur `/health` et `/health/worker`.

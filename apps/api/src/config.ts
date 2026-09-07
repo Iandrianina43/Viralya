@@ -51,9 +51,11 @@ const EnvSchema = z.object({
 
   NEWS_API_KEY: z.string().optional(),
 
-  // Publication réelle (phase 4) : clé Ayrshare (compte Business, un profil par influenceur).
-  // Sans clé, la publication est simulée (compte social interne).
-  AYRSHARE_API_KEY: z.string().optional(),
+  // Publication réelle (7 sept. 2026) : Zernio (https://zernio.com, un profil par influenceur, comptes
+  // connectés par OAuth hébergé). Sans clé, la publication est simulée (compte social interne).
+  // ZERNIO_WEBHOOK_SECRET : secret choisi par nous, enregistré chez Zernio au démarrage (webhook signé).
+  ZERNIO_API_KEY: z.string().optional(),
+  ZERNIO_WEBHOOK_SECRET: z.string().optional(),
   // --- Facturation Stripe (abonnements) et budget mensuel de génération (7 sept. 2026) ---
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),

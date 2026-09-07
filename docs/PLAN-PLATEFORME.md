@@ -57,7 +57,7 @@ En-têtes HTTP (nosniff, frame deny, referrer, HSTS en prod), limitation de déb
 
 1. Créer le compte Stripe, poser les clés, enregistrer le webhook, valider les tarifs.
 2. Créer le compte Resend, vérifier le domaine d'envoi.
-3. Choisir Ayrshare ou Zernio pour la publication réelle.
+3. Publication réelle : Zernio retenu et codé (7 sept.) — compte Zernio, `ZERNIO_API_KEY`, `ZERNIO_WEBHOOK_SECRET`, migration 0019.
 4. Appliquer la migration 0017 dans Supabase.
 5. Poser `DEFAULT_MONTHLY_BUDGET_USD=0` en prod le jour de l'ouverture (forfait obligatoire pour les
    nouveaux espaces) — ton espace admin garde un budget manuel illimité (`monthly_budget_usd` vide,

@@ -430,6 +430,7 @@ studioRouter.get("/setup", (_req, res) => {
     image: { configured: config.IMAGE_PROVIDER === "openai" && !!config.OPENAI_API_KEY },
     piapi: { configured: piapiConfigured() },
     elevenlabs: { configured: !!config.ELEVENLABS_API_KEY },
+    publisher: { configured: !!config.ZERNIO_API_KEY, webhook: !!config.ZERNIO_WEBHOOK_SECRET },
     stripe: { configured: stripeConfigured() },
     email: { configured: emailConfigured() },
     default_video_provider: "piapi",

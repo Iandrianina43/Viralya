@@ -1,6 +1,7 @@
 import { logger } from "../logger";
 import { generateText } from "../providers/llm";
 import { supabase } from "../supabase";
+import { activeConnection } from "./publishing";
 
 // ─────────────────────────────────────────────────────────────
 // COMPTE SOCIAL SIMULÉ (BRIEF § 9) — chaque influenceur a son profil par réseau
@@ -167,11 +168,14 @@ export interface SocialFeed {
   profile: SocialProfile & { followers: number; posts: number; total_views: number; total_likes: number; engagement_rate: number };
   posts: SocialPost[];
   upcoming: SocialPost[];
+  /** Compte réel connecté sur ce réseau (Zernio), sinon null : les abonnés affichés sont alors les vrais. */
+  connection: { id: string; handle: string | null; profile_url: string | null; picture_url: string | null; followers: number | null; status: string } | null;
 }
 
 /** Profil + feed publié + à venir, avec les statistiques du moment. */
 export async function getFeed(avatarId: string, network: SocialNetwork): Promise<SocialFeed> {
   const profile = await ensureProfile(avatarId, network);
+  const conn = await activeConnection(avatarId, network);
   const { data: rows } = await supabase
     .from("content_items")
     .select("*")
@@ -187,11 +191,13 @@ export async function getFeed(avatarId: string, network: SocialNetwork): Promise
   const total_views = posts.reduce((a, p) => a + p.stats.views, 0);
   const total_likes = posts.reduce((a, p) => a + p.stats.likes, 0);
   const inter = posts.reduce((a, p) => a + p.stats.likes + p.stats.comments + p.stats.shares + p.stats.saves, 0);
-  const followers = profile.base_followers + gained;
+  // Compte réel connecté : les abonnés viennent du réseau (rafraîchis par sync_stats), sinon simulation.
+  const followers = typeof conn?.followers === "number" ? conn.followers : profile.base_followers + gained;
   return {
     profile: { ...profile, followers, posts: posts.length, total_views, total_likes, engagement_rate: followers ? Math.round((inter / Math.max(1, posts.length) / followers) * 10000) / 100 : 0 },
     posts,
     upcoming,
+    connection: conn ? { id: conn.id, handle: conn.handle ?? null, profile_url: conn.profile_url ?? null, picture_url: conn.picture_url ?? null, followers: conn.followers ?? null, status: conn.status } : null,
   };
 }
 

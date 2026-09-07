@@ -172,6 +172,7 @@ export function Settings() {
         { label: "Voix (ElevenLabs)", ok: setup.elevenlabs.configured },
         { label: "Paiement (Stripe)", ok: !!setup.stripe?.configured },
         { label: "E-mails (Resend)", ok: !!setup.email?.configured },
+        { label: "Publication (Zernio)", ok: !!setup.publisher?.configured },
       ]
     : [];
 
