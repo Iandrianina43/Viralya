@@ -1,7 +1,7 @@
 import { logger } from "../../logger";
 import { piapiConfigured } from "../../providers/piapi";
 import { jobLog, type JobRow } from "../../queue/queue";
-import { loadShotContext, submitShot, totalShotCost, type ShotState } from "../hybrid";
+import { noteAudioRejection, loadShotContext, submitShot, totalShotCost, type ShotState } from "../hybrid";
 import { advance, loadContentItem, mergeAssets, requireContentItemId } from "../pipelines";
 
 // ─────────────────────────────────────────────────────────────
@@ -71,11 +71,12 @@ export async function generateShotsJob(job: JobRow): Promise<void> {
       }
       shot.submit_attempts = (shot.submit_attempts ?? 0) + 1;
       shot.error = msg.slice(0, 200);
+      const audio = noteAudioRejection(shot, err);
       if (shot.submit_attempts >= MAX_SUBMIT_ATTEMPTS) {
         shot.phase = "failed";
         say(`❌ ${shot.titre} : abandon (${msg.slice(0, 100)})`);
       } else {
-        say(`⚠️ ${shot.titre} : soumission échouée (${msg.slice(0, 80)}) — nouvel essai au prochain passage`);
+        say(`⚠️ ${shot.titre} : ${audio ? "audio refusé par la modération du fournisseur" : `soumission échouée (${msg.slice(0, 80)})`} — nouvel essai au prochain passage${shot.talk_provider_fallback ? ` avec ${shot.talk_provider_fallback}` : ""}`);
       }
       logger.warn("hybrid_submit_failed", { itemId: id, idx: shot.idx, err: msg.slice(0, 200) });
     }

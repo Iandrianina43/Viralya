@@ -105,6 +105,25 @@ export interface ShotState {
   submit_attempts?: number;
   /** Seedance a refusé ce plan pour modération (référence réaliste) → variante less-restriction désormais. */
   moderated?: boolean;
+  /** Keyframes payés pour ce plan (comptés même si le rendu échoue : ils ont été facturés). */
+  keyframe_cost_usd?: number;
+  /** Refus « audio sensible » du fournisseur : après deux refus, le plan passe au moteur de repli (lip-sync). */
+  audio_rejections?: number;
+  talk_provider_fallback?: TalkProvider;
+}
+
+/** PiAPI / Seedance 2.5 : « The request was rejected because the input audio may contain sensitive information ». */
+export function isAudioRejected(err: unknown): boolean {
+  return /input audio.*sensitive|audio.*rejected|sensitive.*audio/i.test(String((err as Error)?.message ?? err));
+}
+/** Moteur de parole de repli quand Seedance 2.5 refuse l'audio : OmniHuman (lip-sync sur le keyframe, recommandé pour le français). */
+export const TALK_FALLBACK_PROVIDER: TalkProvider = "omnihuman";
+/** À appeler quand une soumission de plan parlé échoue : compte les refus audio et bascule au 2e. */
+export function noteAudioRejection(shot: ShotState, err: unknown): boolean {
+  if (shot.role !== "talk" || !isAudioRejected(err)) return false;
+  shot.audio_rejections = (shot.audio_rejections ?? 0) + 1;
+  if (shot.audio_rejections >= 2 && !shot.talk_provider_fallback) shot.talk_provider_fallback = TALK_FALLBACK_PROVIDER;
+  return true;
 }
 
 export interface HybridSettings {
@@ -298,7 +317,7 @@ async function brollKeyframe(ctx: ShotContext, loc: LocationRow, shot: ShotState
   const outfitId = ctx.outfit?.id ?? null;
   try {
     const { keyframe, cached, cost } = await ensureKeyframe(ctx.avatar, { locationId: loc.id, outfitId });
-    if (!cached) say?.(`🖼️ ${shot.titre} : keyframe du décor généré (${cost.toFixed(3)} $)`);
+    if (!cached) { say?.(`🖼️ ${shot.titre} : keyframe du décor généré (${cost.toFixed(3)} $)`); shot.keyframe_cost_usd = Math.round(((shot.keyframe_cost_usd ?? 0) + cost) * 1000) / 1000; }
     return keyframe.validated || qcVerdict(keyframe.face_score) === "pass" ? keyframe : null;
   } catch (err) {
     logger.warn("broll_keyframe_failed", { itemId: ctx.item.id, shot: shot.idx, err: String((err as Error)?.message ?? err) });
@@ -543,13 +562,17 @@ export async function submitShot(ctx: ShotContext, shot: ShotState, say?: (msg: 
       shot.keyframe_url = keyframe.url;
       shot.keyframe_id = keyframe.id;
       shot.framing = framing;
+      if (!cached) shot.keyframe_cost_usd = Math.round(((shot.keyframe_cost_usd ?? 0) + cost) * 1000) / 1000;
       say?.(cached ? `🖼️ ${shot.titre} : keyframe du décor réutilisé (0 $)` : `🖼️ ${shot.titre} : keyframe du décor généré (${cost.toFixed(3)} $)`);
     }
     await resolveInserts(ctx, shot, loc, say);
     const insertsCost = (shot.inserts ?? []).reduce((a, i) => a + (Number(i.cost_usd) || 0), 0);
 
     // Seedance 2.5 : la réplique est synthétisée par le modèle (timbre = mp3 ElevenLabs en @audio1).
-    if (talkProvider === "seedance-2.5") {
+    // Repli après deux refus « audio sensible » de Seedance 2.5 : lip-sync OmniHuman sur le keyframe (même audio).
+    const talkEngine: TalkProvider = shot.talk_provider_fallback ?? talkProvider;
+    if (shot.talk_provider_fallback && talkEngine !== talkProvider) say?.(`🔁 ${shot.titre} : audio refusé deux fois par Seedance 2.5 → moteur de repli ${talkEngine}`);
+    if (talkEngine === "seedance-2.5") {
       const taskType = TALK_25_TASK;
       const resolution = talkResolution(talkMode, seedance.resolution);
       const hasKeyframe = imageUrl !== String(ctx.avatar.ref_image_url);
@@ -595,14 +618,14 @@ export async function submitShot(ctx: ShotContext, shot: ShotState, say?: (msg: 
     }
 
     const prompt = talkPrompt(ctx.avatar, scene);
-    const taskId = await submitTalkingAvatar({ provider: talkProvider, mode: talkMode, imageUrl, audioUrl: shot.audio_url, prompt });
-    shot.provider = talkProvider;
+    const taskId = await submitTalkingAvatar({ provider: talkEngine, mode: talkMode, imageUrl, audioUrl: shot.audio_url, prompt });
+    shot.provider = talkEngine;
     shot.native_voice = false;
     shot.prompt = prompt;
     shot.task_id = taskId;
     shot.phase = "video";
     shot.error = undefined;
-    shot.cost_usd = Math.round((estimateTalkCost(talkProvider, talkMode, shot.audio_seconds ?? shot.duration) + insertsCost) * 1000) / 1000;
+    shot.cost_usd = Math.round((estimateTalkCost(talkEngine, talkMode, shot.audio_seconds ?? shot.duration) + insertsCost) * 1000) / 1000;
     return;
   }
 
@@ -724,5 +747,5 @@ function fallbackScene(shot: ShotState): VlogScene {
 }
 
 export function totalShotCost(shots: ShotState[]): number {
-  return Math.round(shots.reduce((a, s) => a + (Number(s.cost_usd) || 0), 0) * 100) / 100;
+  return Math.round(shots.reduce((a, s) => a + (Number(s.cost_usd) || 0) + (Number(s.keyframe_cost_usd) || 0), 0) * 100) / 100;
 }

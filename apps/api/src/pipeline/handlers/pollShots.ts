@@ -11,7 +11,7 @@ import { piapiCancel, piapiPoll } from "../../providers/piapi";
 import { pollTalkingAvatar } from "../../providers/talkingAvatar";
 import { enqueue, type JobRow } from "../../queue/queue";
 import { supabase } from "../../supabase";
-import { alignWordsToScript, dialogueScore, loadShotContext, planInserts, submitShot, totalShotCost, type ShotContext, type ShotState } from "../hybrid";
+import { alignWordsToScript, dialogueScore, loadShotContext, noteAudioRejection, planInserts, submitShot, totalShotCost, type ShotContext, type ShotState } from "../hybrid";
 import { advance, loadContentItem, mergeAssets, requireContentItemId, type ContentItemRow } from "../pipelines";
 import { isOutOfCredits, isRateLimited, MAX_SUBMIT_ATTEMPTS, OUT_OF_CREDITS_MSG } from "./generateShots";
 
@@ -168,9 +168,12 @@ export async function pollShotsJob(job: JobRow): Promise<void> {
       }
       shot.submit_attempts = (shot.submit_attempts ?? 0) + 1;
       shot.error = msg.slice(0, 200);
+      const audio = noteAudioRejection(shot, err);
       if (shot.submit_attempts >= MAX_SUBMIT_ATTEMPTS) {
         shot.phase = "failed";
         say(`❌ ${shot.titre} : abandon (${msg.slice(0, 100)})`);
+      } else if (audio) {
+        say(`⚠️ ${shot.titre} : audio refusé par la modération du fournisseur — nouvel essai${shot.talk_provider_fallback ? ` avec ${shot.talk_provider_fallback}` : ""}`);
       }
     }
   }

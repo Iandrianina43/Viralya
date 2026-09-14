@@ -120,8 +120,11 @@ export async function ensureKeyframe(
   const query: KeyframeQuery = { locationId: input.locationId, outfitId: outfit?.id ?? null, framing };
 
   if (!input.force) {
+    // Réutilisé dès qu'il n'est pas franchement mauvais (validé, visage reconnu, incertain ou non contrôlé) : le
+    // 14 sept. un plan parlé relancé trois fois a regénéré le même keyframe « à revoir » quatre fois (0,57 $).
+    // Un keyframe « fail » (visage différent) est refait ; `force` aussi (bouton de la Bible).
     const existing = await findKeyframe(avatar.id, query);
-    if (existing && (existing.validated || qcVerdict(existing.face_score) === "pass")) {
+    if (existing && (existing.validated || qcVerdict(existing.face_score) !== "fail")) {
       return { keyframe: existing, cached: true, cost: 0 };
     }
   }
