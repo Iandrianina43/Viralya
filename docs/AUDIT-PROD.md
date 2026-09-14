@@ -92,9 +92,7 @@ corrigé le jour même, ce qui reste à faire par priorité, et ce qui dépend d
 - Fusion des relances : un rendu qui dépasse le délai de suivi (25 min) est marqué en échec alors
   que les clips peuvent encore arriver → re-vérifier les tâches avant d'échouer.
 - Coûts réels pour les photos / carrousels (aujourd'hui estimation fixe non réconciliée).
-- Barre d'onglets par influenceur (Studio · Bible · Calendrier · Compte · Journal) et entrée
-  « Calendrier » dans le menu ; `GET /calendar/upcoming` et `GET /billing/usage` non exposés.
-- Reste de budget affiché au moment de dépenser (puce dans la barre du haut).
+- ~~Barre d'onglets par influenceur, entrée « Calendrier » dans le menu (page `/calendar` sur `GET /calendar/upcoming`), reste de crédits dans la barre du haut et estimations en crédits avant de lancer~~ — fait le 14 sept.
 - États de chargement (tableau de bord, influenceurs, campagnes, journal) et accessibilité des
   modales (rôle dialog, Échap, focus).
 - Grille du calendrier et panneau latéral sur mobile ; zone d'actions des cartes influenceur.

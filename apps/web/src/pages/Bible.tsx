@@ -1,3 +1,4 @@
+import { AvatarTabs } from "../components/AvatarTabs";
 import { MediaButton } from "../components/MediaViewer";
 import { ConfirmModal } from "../components/Modal";
 import { Camera, Check, Clapperboard, ExternalLink, Images, Shirt, Sparkles, Star, Trash2, UserSquare2 } from "lucide-react";
@@ -160,6 +161,7 @@ export function Bible() {
 
   return (
     <div>
+      <AvatarTabs id={id!} name={avatar?.name} />
       <PageHeader
         eyebrow="Character Bible"
         title={avatar ? avatar.name : "Influenceur"}

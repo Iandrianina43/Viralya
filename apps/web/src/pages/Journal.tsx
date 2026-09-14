@@ -1,7 +1,8 @@
 import { BookOpen, CalendarDays, FileText, Info, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, type MemoryEntry } from "../api";
+import { api, type Avatar, type MemoryEntry } from "../api";
+import { AvatarTabs } from "../components/AvatarTabs";
 import { ConfirmModal } from "../components/Modal";
 
 import { errMsg } from "../lib/errMsg";
@@ -16,6 +17,8 @@ const KIND: Record<string, { label: string; color: string; icon: typeof Info }> 
 export function Journal() {
   const { id } = useParams();
   const [entries, setEntries] = useState<MemoryEntry[]>([]);
+  const [avatar, setAvatar] = useState<Avatar | null>(null);
+  useEffect(() => { if (id) api.getAvatar(id).then((r) => setAvatar(r.avatar)).catch(() => setAvatar(null)); }, [id]);
   const [kind, setKind] = useState("fact");
   const [summary, setSummary] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -38,9 +41,9 @@ export function Journal() {
 
   return (
     <div className="max-w-2xl">
+      <AvatarTabs id={id!} name={avatar?.name ?? null} />
       <div className="flex items-center justify-between mb-2">
         <h1 className="text-2xl font-bold text-ink">Journal de vie 🧠</h1>
-        <Link to="/avatars" className="text-sm text-slate-500 hover:underline">← Avatars</Link>
       </div>
       <p className="text-sm text-slate-500 mb-6">La mémoire de l'avatar : faits, histoires en cours, événements. Il l'enrichit tout seul à chaque publication.</p>
       {err && <div className="text-red-600 mb-4 text-sm">Erreur : {err}</div>}

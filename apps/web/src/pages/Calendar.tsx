@@ -2,6 +2,8 @@ import { CalendarDays, ChevronLeft, ChevronRight, Clapperboard, Image as ImageIc
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, type Avatar, type AvatarLocation, type ContentPlan, type PlanEntry, type PlanEntryType } from "../api";
+import { AvatarTabs } from "../components/AvatarTabs";
+import { fmtCredits, refreshCredits } from "../lib/credits";
 import { ConfirmModal } from "../components/Modal";
 import { Button, useToast, Skeleton } from "../components/ui";
 
@@ -131,7 +133,8 @@ export function Calendar() {
     setBusy("prod");
     try {
       const r = await api.producePlanEntry(selected.id, { resolution, talk_mode: resolution === "1080p" ? "pro" : "std" });
-      toast.push("ok", `Production lancée (≈ ${r.estimated_cost_usd.toFixed(2)} $). Suivi dans le studio et les tâches.`);
+      refreshCredits();
+      toast.push("ok", `Production lancée (${fmtCredits(r.estimated_cost_usd)}). Suivi dans le studio et les tâches.`);
       await load(true);
       setSelected((s) => (s ? { ...s, status: "generating", content_item_id: r.content_item_id } : s));
     } catch (e) { toast.push("warn", String((e as Error).message ?? e)); } finally { setBusy(null); }
@@ -161,9 +164,9 @@ export function Calendar() {
 
   return (
     <div>
+      <AvatarTabs id={id!} name={avatar?.name} />
       <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
         <div>
-          <div className="text-xs text-slate-400"><Link to="/avatars" className="hover:underline">Influenceurs</Link> / {avatar?.name ?? "…"}</div>
           <h1 className="text-2xl font-bold text-ink flex items-center gap-2"><CalendarDays className="w-6 h-6 text-accent" /> Calendrier éditorial</h1>
           <p className="text-sm text-slate-500 mt-0.5">Un mois qui raconte une histoire : piliers, séries, arcs, puis les contenus jour par jour. Chaque entrée se produit à la demande.</p>
         </div>

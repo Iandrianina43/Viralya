@@ -1,4 +1,4 @@
-import { Building2, ChevronDown, ClipboardCheck, Compass, LayoutDashboard, ListChecks, LogOut, Megaphone, Menu, Plus, Settings as SettingsIcon, Users, X } from "lucide-react";
+import { Building2, CalendarDays, ChevronDown, ClipboardCheck, Coins, Compass, LayoutDashboard, ListChecks, LogOut, Megaphone, Menu, Plus, Settings as SettingsIcon, Users, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth";
@@ -20,6 +20,8 @@ import { Login } from "./pages/Login";
 import { Settings } from "./pages/Settings";
 import { Studio } from "./pages/Studio";
 import { Tasks } from "./pages/Tasks";
+import { Upcoming } from "./pages/Upcoming";
+import { useBilling } from "./lib/credits";
 import { Welcome } from "./pages/Welcome";
 import { welcomeSeen } from "./lib/journey";
 
@@ -27,6 +29,7 @@ const NAV = [
   { to: "/bienvenue", label: "Guide", icon: Compass },
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/avatars", label: "Influenceurs", icon: Users },
+  { to: "/calendar", label: "Calendrier", icon: CalendarDays },
   { to: "/content", label: "Contenus", icon: ClipboardCheck },
   { to: "/ugc", label: "Campagnes UGC", icon: Megaphone },
   { to: "/tasks", label: "Tâches", icon: ListChecks },
@@ -41,6 +44,21 @@ function Brand() {
       <span className="font-sans font-bold text-[19px] tracking-tight text-ink">Viralya</span>
       <span className="font-mono text-[11px] text-muted uppercase tracking-wider">studio</span>
     </div>
+  );
+}
+
+/** Reste de crédits, toujours visible (audit P2) : mensuel + achetés ; « ∞ » pour un espace sans limite. */
+function CreditsChip() {
+  const billing = useBilling();
+  if (!billing) return <div className="ml-auto" />;
+  const c = billing.credits;
+  const low = c ? c.monthly_granted > 0 && c.total < c.monthly_granted * 0.2 : false;
+  return (
+    <NavLink to="/settings" className={`ml-auto flex items-center gap-1.5 h-9 px-2.5 rounded border text-sm font-medium tabular-nums transition-colors ${low ? "border-warn/40 bg-warn-soft text-warn" : "border-rule bg-white text-ink-2 hover:bg-paper-2"}`}
+      title={c ? `${c.monthly} crédits du mois + ${c.topup} achetés · 1 crédit = ${billing.credit_usd.toFixed(2)} $ de coût fournisseur` : "Espace sans limite de crédits"}>
+      <Coins className="w-4 h-4" strokeWidth={2.1} />
+      {c ? <span>{c.total} <span className="hidden sm:inline font-normal text-muted">crédits</span></span> : <span>∞</span>}
+    </NavLink>
   );
 }
 
@@ -123,7 +141,9 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
         </label>
       )}
 
-      <div className="ml-auto relative" ref={menuRef}>
+      <CreditsChip />
+
+      <div className="relative" ref={menuRef}>
         <button onClick={() => setOpen(!open)} className="flex items-center gap-2 rounded p-1 pr-2 hover:bg-paper-2 transition-colors" aria-haspopup="menu" aria-expanded={open}>
           <div className="w-8 h-8 rounded-full bg-ink text-white flex items-center justify-center font-sans font-semibold text-[13px]">{initial}</div>
           <span className="hidden sm:block font-sans text-sm font-medium text-ink max-w-[140px] truncate">{user?.name || user?.email}</span>
@@ -219,6 +239,7 @@ function Shell() {
               <Route path="/avatars/:id/calendar" element={<Calendar />} />
               <Route path="/avatars/:id/social" element={<Social />} />
               <Route path="/avatars/:id/launch" element={<Launch />} />
+              <Route path="/calendar" element={<Upcoming />} />
               <Route path="/ugc" element={<Ugc />} />
               <Route path="/ugc/:id" element={<Ugc />} />
               <Route path="/content" element={<ContentReview />} />

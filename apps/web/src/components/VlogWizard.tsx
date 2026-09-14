@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 
 const INSERT_LABEL: Record<string, string> = { illustration: "illustration", location: "décor seul", close: "gros plan", full: "en pied", selfie: "selfie" };
 import { useEffect, useMemo, useState } from "react";
+import { fmtCredits } from "../lib/credits";
 import { api, type AvatarLocation, type CloneSource, type FormatKind, type FormatProduct, type LocationScope, type SeedanceResolution, type TalkProvider, type TalkProviderInfo, type VideoFormat, type VideoModelInfo, type VlogProduction, type VlogScene } from "../api";
 
 import { errMsg } from "../lib/errMsg";
@@ -730,7 +731,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
                 })}
                 {shownEstimate != null && (
                   <span className="ml-auto text-sm font-semibold text-ink bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1" title="Estimation : prix × durée + raccords plan-séquence">
-                    ≈ {shownEstimate.toFixed(2)} $
+                    ≈ {shownEstimate.toFixed(2)} $ · {fmtCredits(shownEstimate)}
                   </span>
                 )}
               </div>
@@ -757,7 +758,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
               disabled={busy || scenes.length === 0 || decors.some((d) => !d.image)}
               title={decors.some((d) => !d.image) ? "Génère d'abord l'image de chaque décor : elle sert de référence visuelle à Seedance." : ""}
               className="btn-primary flex items-center gap-2 disabled:opacity-50">
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />} Lancer la production{shownEstimate != null ? ` (≈ ${shownEstimate.toFixed(2)} $)` : ""}
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />} Lancer la production{shownEstimate != null ? ` (${fmtCredits(shownEstimate)})` : ""}
             </button>
           </div>
           <p className="text-xs text-slate-400 mt-2 text-right">

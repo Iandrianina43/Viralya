@@ -1,3 +1,4 @@
+import { AvatarTabs } from "../components/AvatarTabs";
 import { MediaButton } from "../components/MediaViewer";
 import {
   BookOpen, CheckCircle2, Clapperboard, Coffee, Film, Footprints, Image as ImageIcon,
@@ -221,13 +222,7 @@ export function Studio() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5">
-        <Link to="/avatars" className="text-sm text-slate-500 hover:underline">← Tous les avatars</Link>
-        <div className="flex gap-2">
-          <Link to={`/avatars/${id}/journal`} className="text-sm px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><BookOpen className="w-4 h-4" /> Journal</Link>
-          <Link to={`/avatars/${id}`} className="text-sm px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5"><Pencil className="w-3.5 h-3.5" /> Éditer</Link>
-        </div>
-      </div>
+      <AvatarTabs id={id!} name={avatar.name} />
 
       {/* Hero — fond flouté + portrait bien cadré */}
       <div className="card overflow-hidden mb-6 relative">

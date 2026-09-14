@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Loader2, Megaphone, Plus, Sparkles, Trash2, 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type Avatar, type UgcBeat, type UgcCampaign, type UgcCampaignInput, type UgcEstimate, type UgcVariant } from "../api";
+import { fmtCredits, refreshCredits } from "../lib/credits";
 import { ConfirmModal } from "../components/Modal";
 import { Button, useToast, SkeletonCard } from "../components/ui";
 
@@ -78,7 +79,8 @@ export function Ugc() {
     setBusy(v.id);
     try {
       const r = await api.produceVariant(v.id, { resolution, talk_mode: resolution === "1080p" ? "pro" : "std" });
-      toast.push("ok", `Vidéo lancée (≈ ${r.estimated_cost_usd.toFixed(2)} $).`);
+      refreshCredits();
+      toast.push("ok", `Vidéo lancée (${fmtCredits(r.estimated_cost_usd)}).`);
       if (id) api.getCampaign(id).then((r2) => setCurrent(r2.campaign)).catch(() => {});
     } catch (e) { toast.push("warn", String((e as Error).message ?? e)); } finally { setBusy(null); }
   };

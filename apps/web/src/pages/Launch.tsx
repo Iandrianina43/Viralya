@@ -2,6 +2,7 @@ import { Check, Copy, ExternalLink, ImageIcon, RefreshCw, Sparkles, Trash2 } fro
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, type Avatar, type LaunchBanner, type LaunchKit, type LaunchNetwork } from "../api";
+import { AvatarTabs } from "../components/AvatarTabs";
 import { ConfirmModal } from "../components/Modal";
 import { Button, PageHeader, SkeletonLines, useToast } from "../components/ui";
 
@@ -113,11 +114,11 @@ export function Launch() {
 
   return (
     <div className="space-y-6">
+      <AvatarTabs id={id!} name={avatar?.name} />
       <PageHeader
-        eyebrow={`Influenceurs / ${avatar?.name ?? "…"}`}
+        eyebrow="Avant le premier post"
         title="Kit de lancement"
         description="Tout ce qu'il faut pour créer ses comptes à la main : à copier-coller. La création, la validation par téléphone et la mise en place restent manuelles."
-        actions={<Link to={`/avatars/${id}/social`} className="btn-secondary text-sm">Compte social</Link>}
       />
 
       {/* 1. Identité */}
