@@ -62,9 +62,16 @@ corrigé le jour même, ce qui reste à faire par priorité, et ce qui dépend d
 
 ## 2. À faire (par priorité)
 
+### Fait le 14 septembre
+- **Bucket de stockage privé + URLs signées** (`apps/api/src/lib/storage.ts`) : les URLs restent
+  canoniques en base ; chaque réponse JSON est réécrite avec des URLs signées (3 h, cache serveur pour
+  une URL stable entre deux rafraîchissements) ; les URLs signées renvoyées par le navigateur sont
+  ramenées à la forme canonique ; PiAPI, ElevenLabs, contrôle visage et Zernio reçoivent des URLs
+  signées longues (12 h / 24 h) ; ffmpeg et le ré-encodage téléchargent par le rôle de service.
+  `STORAGE_PRIVATE=true` passe le bucket en privé au démarrage ; `scripts/storage-privacy.ts` pour
+  l'état et le retour arrière. ⚠️ Le bucket est partagé entre le poste local et la prod.
+
 ### P1 — avant d'ouvrir à des clients payants
-- **Bucket de stockage privé + URLs signées** : aujourd'hui toutes les vidéos, photos produit et
-  sources de clone sont lisibles par quiconque a l'URL. Chantier transversal (toutes les URL en base).
 - **Nettoyage du stockage** : rien n'est jamais supprimé (versions, keyframes, sources ≤ 200 Mo).
   Suppression du préfixe à la suppression d'un avatar/contenu + purge des sources après 7 jours.
 - **Réservation atomique du budget** (deux lancements simultanés passent le même plafond) : RPC SQL

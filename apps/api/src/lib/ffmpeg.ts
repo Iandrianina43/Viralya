@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ffmpegPath from "ffmpeg-static";
 import { logger } from "../logger";
+import { downloadMedia } from "./storage";
 
 // Montage vidéo local (ffmpeg-static) : normalise chaque scène puis assemble le vlog.
 // Format cible : 1080x1920 (9:16), 30 fps, H.264 + AAC — prêt pour TikTok/Reels.
@@ -46,10 +47,10 @@ export async function frameFromVideo(url: string, atSec = 1): Promise<Buffer> {
   }
 }
 
+// Notre stockage est privé : téléchargement par le rôle de service (lib/storage.ts), HTTP pour le reste.
 async function download(url: string, dest: string): Promise<void> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`download ${res.status}: ${url.slice(0, 120)}`);
-  await writeFile(dest, Buffer.from(await res.arrayBuffer()));
+  const { bytes } = await downloadMedia(url);
+  await writeFile(dest, bytes);
 }
 
 /** Ré-encode une image en JPEG (≈10x plus léger qu'un PNG) avec largeur max optionnelle. */

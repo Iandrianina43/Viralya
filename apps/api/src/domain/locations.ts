@@ -1,4 +1,4 @@
-import { extractJson } from "../lib/storage";
+import { downloadMedia, extractJson } from "../lib/storage";
 import { logger } from "../logger";
 import { generateImage } from "../providers/image";
 import { generateText } from "../providers/llm";
@@ -81,9 +81,8 @@ export async function optimizeLocationImages(avatarId: string): Promise<{ optimi
   let optimized = 0;
   for (const loc of heavy) {
     try {
-      const res = await fetch(loc.ref_image_url as string);
-      if (!res.ok) continue;
-      const url = await storeAsJpeg(Buffer.from(await res.arrayBuffer()), `${avatarId}/locations/${loc.key}-opt-${Date.now()}`);
+      const { bytes } = await downloadMedia(loc.ref_image_url as string);
+      const url = await storeAsJpeg(bytes, `${avatarId}/locations/${loc.key}-opt-${Date.now()}`);
       await supabase.from("avatar_locations").update({ ref_image_url: url }).eq("id", loc.id);
       optimized++;
     } catch (err) {

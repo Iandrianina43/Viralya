@@ -1,3 +1,4 @@
+import { SIGN_TTL, signUrl } from "../lib/storage";
 import { logger } from "../logger";
 import { piapiFetch } from "./piapi";
 
@@ -83,10 +84,13 @@ export interface TalkingAvatarInput {
 export async function submitTalkingAvatar(input: TalkingAvatarInput): Promise<string> {
   if (input.provider === "seedance-2.5") throw new Error("seedance-2.5 se soumet via submitSeedanceSegment (voix native)");
   const mode: TalkMode = input.mode && TALK_PROVIDERS[input.provider].modes.includes(input.mode) ? input.mode : "std";
+  // Bucket privé : keyframe et audio partent en URLs signées.
+  const imageUrl = await signUrl(input.imageUrl, SIGN_TTL.provider);
+  const audioUrl = await signUrl(input.audioUrl, SIGN_TTL.provider);
   const body =
     input.provider === "kling-avatar"
-      ? { model: "kling", task_type: "avatar", input: { image_url: input.imageUrl, local_dubbing_url: input.audioUrl, ...(input.prompt ? { prompt: input.prompt } : {}), mode } }
-      : { model: "omni-human", task_type: "omni-human-1.5", input: { image_url: input.imageUrl, audio_url: input.audioUrl, prompt: input.prompt ?? "" } };
+      ? { model: "kling", task_type: "avatar", input: { image_url: imageUrl, local_dubbing_url: audioUrl, ...(input.prompt ? { prompt: input.prompt } : {}), mode } }
+      : { model: "omni-human", task_type: "omni-human-1.5", input: { image_url: imageUrl, audio_url: audioUrl, prompt: input.prompt ?? "" } };
   const data = await piapiFetch("/api/v1/task", { method: "POST", body: JSON.stringify(body) });
   const taskId = data?.task_id as string | undefined;
   if (!taskId) throw new Error("piapi: pas de task_id dans la réponse");

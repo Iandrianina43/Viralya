@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { config } from "../config";
 import { logger } from "../logger";
 import { supabase } from "../supabase";
+import { SIGN_TTL, signUrls } from "./storage";
 
 // ─────────────────────────────────────────────────────────────
 // Contrôle qualité d'identité : similarité de visage entre le portrait de
@@ -51,8 +52,11 @@ export function smallFace(faceHeight: number | null | undefined): boolean {
 export async function faceScores(refUrl: string, candidates: string[], timeoutMs = 180_000): Promise<FaceScore[]> {
   const unknown = (error: string): FaceScore[] => candidates.map((url) => ({ url, score: null, faces: 0, faceHeight: null, verdict: "unknown", error }));
   if (!candidates.length) return [];
+  // Bucket privé : le script Python télécharge par HTTP → URLs signées ; les résultats sont ramenés aux URLs d'origine.
+  const [signedRef, ...signedCandidates] = await signUrls([refUrl, ...candidates], SIGN_TTL.provider);
+  const originalOf = new Map<string, string>(signedCandidates.map((s, i) => [s, candidates[i]!]));
   return new Promise<FaceScore[]>((resolveP) => {
-    const child = spawn(config.PYTHON_BIN, [SCRIPT, "--ref", refUrl, ...candidates], { windowsHide: true });
+    const child = spawn(config.PYTHON_BIN, [SCRIPT, "--ref", signedRef!, ...signedCandidates], { windowsHide: true });
     let out = "";
     let err = "";
     const timer = setTimeout(() => {
@@ -75,6 +79,7 @@ export async function faceScores(refUrl: string, candidates: string[], timeoutMs
         try {
           const j = JSON.parse(t) as { url?: string; score?: number | null; faces?: number; face_h?: number | null; error?: string };
           if (!j.url) continue;
+          j.url = originalOf.get(j.url) ?? j.url;
           const faceHeight = typeof j.face_h === "number" ? j.face_h : null;
           const verdict = qcVerdict(j.score, faceHeight);
           const softened = verdict === "review" && j.score != null && j.score < QC_THRESHOLDS.review && smallFace(faceHeight);

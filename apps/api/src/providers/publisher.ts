@@ -1,3 +1,4 @@
+import { SIGN_TTL, signUrl, signUrls } from "../lib/storage";
 import { logger } from "../logger";
 import type { PostStats } from "../domain/social";
 import * as zernio from "./zernio";
@@ -68,9 +69,10 @@ export class ZernioPublisher implements Publisher {
   async publish(input: PublishInput): Promise<PublishResult> {
     const platform = zernio.ZERNIO_PLATFORM[input.network];
     if (!platform) throw new Error(`réseau non supporté par Zernio : ${input.network}`);
-    const media = input.mediaUrls.filter((u) => /^https:\/\//i.test(u));
+    // Bucket privé : Zernio télécharge les médias → URLs signées 24 h (« accessibles jusqu'à la fin de l'envoi »).
+    const media = await signUrls(input.mediaUrls.filter((u) => /^https:\/\//i.test(u)), SIGN_TTL.publish);
     if (media.length !== input.mediaUrls.length) throw new Error("les médias doivent être des URL https publiques");
-    const cover = input.coverUrl && /^https:\/\//i.test(input.coverUrl) ? input.coverUrl : null;
+    const cover = input.coverUrl && /^https:\/\//i.test(input.coverUrl) ? await signUrl(input.coverUrl, SIGN_TTL.publish) : null;
     const mediaItems = media.map((url) => ({
       type: input.isVideo ? "video" : "image",
       url,

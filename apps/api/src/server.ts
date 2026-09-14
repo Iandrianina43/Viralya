@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express, { type ErrorRequestHandler } from "express";
 import { config } from "./config";
+import { signedJsonMiddleware } from "./lib/storage";
 import { logger } from "./logger";
 import { registerRoutes } from "./routes";
 
@@ -14,6 +15,9 @@ export function createServer() {
   app.disable("x-powered-by");
   app.set("trust proxy", 1); // derrière Caddy : IP réelle pour le rate-limit
   app.use(cors({ origin: [config.WEB_BASE_URL], credentials: true }));
+
+  // Bucket privé : toute réponse JSON part avec des URLs de stockage SIGNÉES (lib/storage.ts).
+  app.use(signedJsonMiddleware());
 
   registerRoutes(app);
 

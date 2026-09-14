@@ -7,6 +7,7 @@ import { assertBudget, recordUsage } from "../domain/billing";
 import { asyncHandler } from "../lib/asyncHandler";
 import { badRequest } from "../lib/httpError";
 import { requireAvatar } from "../lib/scope";
+import { signedSseSender } from "../lib/storage";
 import { recordMemory } from "../memory/memory";
 import { generateVoiceSamples, listElevenVoices } from "../providers/elevenlabs";
 import { generateImage } from "../providers/image";
@@ -91,7 +92,7 @@ avatarsRouter.post(
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders?.();
-    const send = (obj: unknown) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+    const { send, end } = signedSseSender(res); // bucket privé : URLs de la fiche signées
 
     try {
       const result = await chatAvatarStream(messages, draft, (text) => send({ type: "token", text }));
@@ -99,7 +100,7 @@ avatarsRouter.post(
     } catch (err) {
       send({ type: "error", error: String((err as Error)?.message ?? err) });
     }
-    res.end();
+    await end();
   }),
 );
 

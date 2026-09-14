@@ -25,7 +25,8 @@ Anthropic Claude (texte). Contexte vivant : Open-Meteo (météo), NewsAPI (optio
 ## Prérequis
 
 - Node ≥ 20 et pnpm (`corepack enable`)
-- Un projet Supabase avec le bucket public `avatar-assets` (créé automatiquement au démarrage si absent)
+- Un projet Supabase avec le bucket `avatar-assets` (créé automatiquement au démarrage si absent, passé en
+  **privé** avec `STORAGE_PRIVATE=true` : les médias sont servis par URLs signées, voir `apps/api/src/lib/storage.ts`)
 - Les clés dans `.env` (voir `.env.example`)
 
 ## Installation

@@ -31,6 +31,9 @@ const EnvSchema = z.object({
   ADMIN_EMAIL: z.string().optional(), // bootstrap : crée ce compte admin au démarrage s'il n'existe pas
   ADMIN_PASSWORD: z.string().optional(),
   SUPABASE_STORAGE_BUCKET: z.string().default("avatar-assets").transform((v) => v.trim() || "avatar-assets"),
+  // Bucket privé + URLs signées (14 sept. 2026). true = le bucket est passé en privé au démarrage.
+  // false = rien n'est changé (le bucket est partagé entre local et prod : ne pas le basculer depuis un poste local).
+  STORAGE_PRIVATE: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
 
   LLM_PROVIDER: z.enum(["anthropic", "openai"]).default("anthropic"),
   LLM_MODEL: z.string().default("claude-sonnet-5"),

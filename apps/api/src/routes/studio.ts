@@ -10,6 +10,7 @@ import { adminRequired } from "../auth/auth";
 import { asyncHandler } from "../lib/asyncHandler";
 import { badRequest, notFound } from "../lib/httpError";
 import { orgAvatarIds, requireAvatar } from "../lib/scope";
+import { signedSseSender } from "../lib/storage";
 import { getMemoryBrief } from "../memory/memory";
 import {
   clampDuration,
@@ -43,7 +44,7 @@ function sse(res: import("express").Response) {
   res.setHeader("cache-control", "no-cache");
   res.setHeader("connection", "keep-alive");
   res.flushHeaders?.();
-  return (evt: Record<string, unknown>) => res.write(`data: ${JSON.stringify(evt)}\n\n`);
+  return signedSseSender(res); // bucket privé : les URLs (lieux, keyframes) partent signées, dans l'ordre
 }
 
 // Déclenche plan_day pour un influenceur (équivalent manuel du cron).
@@ -85,7 +86,7 @@ studioRouter.post(
     const avatarId = String(req.body?.avatar_id ?? "");
     if (!avatarId) throw badRequest("avatar_id requis");
     const { base } = await loadDirectorContext(req.org!.id, avatarId);
-    const send = sse(res);
+    const { send, end } = sse(res);
     try {
       const result = await writeStory(
         {
@@ -101,7 +102,7 @@ studioRouter.post(
     } catch (err) {
       send({ type: "error", error: String((err as Error)?.message ?? err) });
     } finally {
-      res.end();
+      await end();
     }
   }),
 );
@@ -255,7 +256,7 @@ studioRouter.post(
     if (!piapiConfigured()) throw badRequest("PiAPI non configuré (PIAPI_API_KEY dans .env)");
     const avatar = await requireAvatar<AvatarCore>(req.org!.id, avatarId, AVATAR_CORE);
 
-    const send = sse(res);
+    const { send, end } = sse(res);
     try {
       send({ type: "step", step: "context", label: "Lecture du contexte (météo, heure, mémoire, lieux)…" });
       const { listLocations, createLocation } = await import("../domain/locations");
@@ -309,7 +310,7 @@ studioRouter.post(
     } catch (err) {
       send({ type: "error", error: String((err as Error)?.message ?? err) });
     } finally {
-      res.end();
+      await end();
     }
   }),
 );

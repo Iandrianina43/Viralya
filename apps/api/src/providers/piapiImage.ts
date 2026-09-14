@@ -1,6 +1,6 @@
 import { config } from "../config";
 import { toJpeg } from "../lib/ffmpeg";
-import { uploadBytes } from "../lib/storage";
+import { SIGN_TTL, signUrls, uploadBytes } from "../lib/storage";
 import { logger } from "../logger";
 
 // ─────────────────────────────────────────────────────────────
@@ -100,7 +100,8 @@ export async function piapiGenerateImage(req: PiapiImageRequest): Promise<PiapiI
   if (!config.PIAPI_API_KEY) throw new Error("PiAPI non configuré (PIAPI_API_KEY manquante).");
   const model = req.model ?? DEFAULT_IMAGE_MODEL;
   const def = PIAPI_IMAGE_MODELS[model];
-  const refs = (req.refs ?? []).filter(Boolean).slice(0, def.maxRefs);
+  // Bucket privé : les références de notre stockage partent en URLs signées.
+  const refs = await signUrls((req.refs ?? []).filter(Boolean).slice(0, def.maxRefs), SIGN_TTL.provider);
   const t0 = Date.now();
 
   const res = await fetch(`${BASE}/api/v1/task`, {

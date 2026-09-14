@@ -1,4 +1,5 @@
 import { config } from "../config";
+import { SIGN_TTL, signUrl } from "../lib/storage";
 import { logger } from "../logger";
 
 // Provider voix ElevenLabs — voix du compte + bibliothèque partagée (français),
@@ -154,10 +155,11 @@ export interface TranscriptResult { text: string; words: TtsWord[]; model: strin
 
 export async function transcribeWords(sourceUrl: string, languageCode = "fra"): Promise<TranscriptResult> {
   if (!config.ELEVENLABS_API_KEY) throw new Error("ELEVENLABS_API_KEY manquante");
+  const signedSource = await signUrl(sourceUrl, SIGN_TTL.provider); // bucket privé
   const call = async (modelId: string) => {
     const form = new FormData();
     form.set("model_id", modelId);
-    form.set("source_url", sourceUrl);
+    form.set("source_url", signedSource);
     form.set("language_code", languageCode);
     form.set("timestamps_granularity", "word");
     form.set("diarize", "false");

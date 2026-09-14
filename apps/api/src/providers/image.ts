@@ -1,5 +1,5 @@
 import { config } from "../config";
-import { uploadBytes } from "../lib/storage";
+import { downloadMedia, uploadBytes } from "../lib/storage";
 import { logger } from "../logger";
 import { DEFAULT_IMAGE_MODEL, isPiapiImageModel, PIAPI_IMAGE_MODELS, piapiImageToStorage, type ImageAspect, type PiapiImageModel } from "./piapiImage";
 
@@ -123,9 +123,8 @@ async function openaiGenerate(prompt: string, storagePathBase: string, size: Ima
 }
 
 async function fetchAsBlob(url: string): Promise<Blob> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`ref download ${res.status}: ${url.slice(0, 100)}`);
-  return new Blob([await res.arrayBuffer()], { type: res.headers.get("content-type") ?? "image/png" });
+  const { bytes, contentType } = await downloadMedia(url);
+  return new Blob([bytes], { type: contentType.startsWith("image/") ? contentType : "image/png" });
 }
 
 async function openaiEdit(faces: string[], locationUrl: string | null, prompt: string, storagePathBase: string, size: ImageSize): Promise<{ imageUrl: string }> {

@@ -1,4 +1,5 @@
 import { config } from "../config";
+import { SIGN_TTL, signUrls } from "../lib/storage";
 import { logger } from "../logger";
 
 // ─────────────────────────────────────────────────────────────
@@ -216,9 +217,10 @@ export function fitSeedancePrompt(prompt: string): string {
 
 /** Soumet un segment Seedance 2.0 (mode omni_reference). Renvoie le task_id PiAPI. */
 export async function submitSeedanceSegment(input: SeedanceSegmentInput): Promise<string> {
-  const images = (input.imageUrls ?? []).filter(Boolean);
-  const videos = (input.videoUrls ?? []).filter(Boolean);
-  const audios = (input.audioUrls ?? []).filter(Boolean);
+  // Bucket privé : les références de notre stockage partent en URLs signées (12 h, files PiAPI longues).
+  const images = await signUrls((input.imageUrls ?? []).filter(Boolean), SIGN_TTL.provider);
+  const videos = await signUrls((input.videoUrls ?? []).filter(Boolean), SIGN_TTL.provider);
+  const audios = await signUrls((input.audioUrls ?? []).filter(Boolean), SIGN_TTL.provider);
   const refs = images.length + videos.length + audios.length;
   if (refs < 1 || refs > 9) throw new Error(`seedance: ${refs} références (1 à 9 requises)`);
 

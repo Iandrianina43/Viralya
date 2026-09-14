@@ -5,6 +5,7 @@ import { adminRouter } from "./admin";
 import { authRouter } from "./auth";
 import { avatarDraftsRouter } from "./avatarDrafts";
 import { config } from "../config";
+import { canonicalizeDeep } from "../lib/storage";
 import { avatarsRouter } from "./avatars";
 import { billingRouter, stripeWebhook } from "./billing";
 import { calendarRouter } from "./calendar";
@@ -38,6 +39,11 @@ export function registerRoutes(app: Express): void {
   // Webhook Zernio (publications confirmées, comptes déconnectés) : même principe, signature HMAC.
   app.post("/api/social/zernio/webhook", express.raw({ type: "*/*", limit: "1mb" }), zernioWebhook);
   app.use(express.json({ limit: "2mb" }));
+  // Les URLs signées renvoyées par le navigateur (photo produit, fiche…) redeviennent canoniques avant stockage.
+  app.use((req, _res, next) => {
+    if (req.body && typeof req.body === "object") req.body = canonicalizeDeep(req.body);
+    next();
+  });
   app.use(healthRouter); // /health à la racine (supervision)
   app.use("/api", healthRouter);
   app.use("/api/auth", authRouter);
