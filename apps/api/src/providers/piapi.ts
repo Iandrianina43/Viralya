@@ -187,6 +187,24 @@ export async function piapiFetch(path: string, init?: RequestInit): Promise<any>
   return body.data;
 }
 
+/**
+ * Annule une tâche PiAPI (`DELETE /api/v1/task/{id}`, doc « Cancel task »). Seules les tâches encore en
+ * attente sont annulées ; une tâche en cours de rendu est refusée et reste facturée. Vérifié le 14 sept.
+ * 2026 : un identifiant inconnu renvoie `{"code":400,"message":"failed to find task"}`.
+ */
+export async function piapiCancel(taskId: string): Promise<"canceled" | "refused" | "not_found"> {
+  try {
+    await piapiFetch(`/api/v1/task/${encodeURIComponent(taskId)}`, { method: "DELETE" });
+    logger.info("piapi_task_canceled", { taskId });
+    return "canceled";
+  } catch (err) {
+    const msg = String((err as Error)?.message ?? err);
+    if (/find task|not found/i.test(msg)) return "not_found";
+    logger.info("piapi_cancel_refused", { taskId, err: msg.slice(0, 160) });
+    return "refused";
+  }
+}
+
 export interface SeedanceSegmentInput {
   prompt: string; // action + dialogue (le texte parlé est écrit dans le prompt)
   imageUrls?: string[]; // identité : portrait + character sheet

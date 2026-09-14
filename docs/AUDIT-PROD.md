@@ -70,13 +70,21 @@ corrigé le jour même, ce qui reste à faire par priorité, et ce qui dépend d
   signées longues (12 h / 24 h) ; ffmpeg et le ré-encodage téléchargent par le rôle de service.
   `STORAGE_PRIVATE=true` passe le bucket en privé au démarrage ; `scripts/storage-privacy.ts` pour
   l'état et le retour arrière. ⚠️ Le bucket est partagé entre le poste local et la prod.
+- **Nettoyage du stockage** (`apps/api/src/lib/storageCleanup.ts`) : à la suppression d'un influenceur,
+  d'un espace ou d'un compte, les fichiers du préfixe et ceux qu'il référençait sont supprimés, SAUF ce
+  qu'une autre ligne en base référence encore (les portraits vivent sous `<org_id>/faces/`, la photo
+  produit d'une campagne sous l'influenceur qui l'a téléversée) ; balayage quotidien des sources de clone
+  de plus de 7 jours sans contenu en cours ; `scripts/storage-cleanup.ts` : rapport des préfixes orphelins
+  (rien en base ne les référence) et purge explicite.
+- **Réservation atomique du budget** : fonction SQL `reserve_usage` (migration **0020**, verrou sur la
+  ligne de l'organisation, somme du mois + insertion dans la même transaction) appelée par `recordUsage`
+  AVANT toute création de contenu ; réservation rattachée au contenu ensuite (`attachUsage`), rendue si
+  rien n'est lancé (`releaseUsage`). Sans la migration : ancien chemin, journalisé une fois.
+- **Annulation côté fournisseur** : annuler un contenu envoie `DELETE /api/v1/task/{id}` à PiAPI pour
+  chaque tâche en vol ; PiAPI n'annule que les tâches encore en attente (doc vérifiée le 14 sept.), celles
+  déjà en rendu vont au bout et restent facturées — le compte rendu de l'annulation le dit.
 
 ### P1 — avant d'ouvrir à des clients payants
-- **Nettoyage du stockage** : rien n'est jamais supprimé (versions, keyframes, sources ≤ 200 Mo).
-  Suppression du préfixe à la suppression d'un avatar/contenu + purge des sources après 7 jours.
-- **Réservation atomique du budget** (deux lancements simultanés passent le même plafond) : RPC SQL
-  `sum(coalesce(actual, estimated))` + insertion conditionnelle.
-- **Annulation côté fournisseur** : annuler un contenu n'arrête pas les rendus PiAPI déjà soumis.
 - **`DEFAULT_MONTHLY_BUDGET_USD=0`** en production le jour de l'ouverture (forfait obligatoire).
 - **Sauvegardes** : vérifier le plan Supabase (PITR) et documenter la restauration.
 
@@ -102,7 +110,7 @@ corrigé le jour même, ce qui reste à faire par priorité, et ce qui dépend d
   migration `schema_migrations` avec refus de démarrer si une migration manque.
 
 ## 3. Décisions et actions qui t'appartiennent
-1. Appliquer les migrations **0017** puis **0018** dans Supabase.
+1. Appliquer les migrations **0017**, **0018**, **0019** (Zernio) et **0020** (budget atomique) dans Supabase.
 2. Poser `LEGAL_EDITOR` (raison sociale, adresse, contact) et faire relire les pages légales.
 3. Créer les comptes Stripe et Resend, poser les clés, vérifier le domaine d'envoi.
 4. Publication réelle : **Zernio retenu et codé le 7 septembre** (voir docs/RECHERCHE-PUBLICATION.md § 5). À faire :

@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { cancelProviderTasks } from "../../domain/cancellation";
 import { assembleHybrid, frameFromVideo, type HybridPart } from "../../lib/ffmpeg";
 import { faceScores } from "../../lib/qc";
 import { uploadBytes } from "../../lib/storage";
@@ -56,6 +57,7 @@ export async function pollShotsJob(job: JobRow): Promise<void> {
   const item = await loadContentItem(id);
   if (item.status === "failed" || item.status === "canceled") {
     logger.info("poll_shots_canceled", { itemId: id });
+    await cancelProviderTasks(item).catch(() => {});
     return;
   }
   const shots = Array.isArray(item.assets.shots) ? (item.assets.shots as ShotState[]) : [];

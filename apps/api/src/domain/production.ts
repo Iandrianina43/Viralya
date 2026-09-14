@@ -5,7 +5,7 @@ import { clampDuration, clampResolution, DEFAULT_SEEDANCE_MODEL, DEFAULT_SEEDANC
 import { DEFAULT_TALK_PROVIDER, isTalkMode, isTalkProvider, type TalkMode, type TalkProvider } from "../providers/talkingAvatar";
 import { enqueue } from "../queue/queue";
 import { supabase } from "../supabase";
-import { assertBudget, orgIdOfAvatar, recordUsage } from "./billing";
+import { attachUsage, orgIdOfAvatar, recordUsage, releaseUsage } from "./billing";
 import type { VlogProduction, VlogScene } from "./director";
 import { createLocation, listLocations, type LocationScope } from "./locations";
 
@@ -90,9 +90,9 @@ export async function launchProduction(avatarId: string, production: VlogProduct
       ? estimateHybridCost(production.scenes, readHybridSettings({ talk_provider: talkProvider, talk_mode: talkMode, video_model: taskType, resolution }), { music, kind: String(opts.extraPayload?.kind ?? ""), inserts: opts.inserts === true })
       : estimateProductionCost(taskType, resolution, production.scenes.map((s) => clampDuration(Number(s.duration_sec) || 12, taskType)));
 
-  // Budget mensuel de l'organisation (7 sept. 2026) : refus 402 AVANT tout coût, inscription au registre après.
+  // Budget mensuel de l'organisation : réservation ATOMIQUE (402 avant tout coût), rattachée au contenu ensuite.
   const orgId = await orgIdOfAvatar(avatarId);
-  if (orgId) await assertBudget(orgId, estimate.total);
+  const ledgerId = orgId ? await recordUsage({ orgId, avatarId, kind: String(opts.extraPayload?.kind ?? "video"), estimatedUsd: estimate.total }) : null;
 
   const title = production.title ?? "Vlog";
   const { data: item, error } = await supabase
@@ -118,16 +118,20 @@ export async function launchProduction(avatarId: string, production: VlogProduct
     })
     .select("id")
     .single();
-  if (error || !item) throw new Error(`insert failed: ${error?.message ?? ""}`);
+  if (error || !item) {
+    await releaseUsage(ledgerId);
+    throw new Error(`insert failed: ${error?.message ?? ""}`);
+  }
 
   const first = format === "hybrid" ? "generate_voice" : "generate_video";
   try {
     const job = await enqueue(first, { avatar_id: avatarId, content_item_id: item.id }, { contentItemId: item.id, avatarId, label: title });
-    if (orgId) await recordUsage({ orgId, avatarId, contentItemId: item.id, kind: String(opts.extraPayload?.kind ?? "video"), estimatedUsd: estimate.total });
+    await attachUsage(ledgerId, item.id);
     return { itemId: item.id, jobId: job.id, estimate: estimate.total, format };
   } catch (err) {
     const msg = String((err as Error)?.message ?? err);
     await supabase.from("content_items").update({ status: "failed", error: msg.slice(0, 300) }).eq("id", item.id);
+    await releaseUsage(ledgerId);
     throw new Error(/jobs_type_check/.test(msg) ? "La base n'accepte pas encore ces jobs : applique les migrations 0015 et 0016." : msg);
   }
 }

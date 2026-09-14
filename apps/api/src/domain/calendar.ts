@@ -5,7 +5,7 @@ import { getMemoryBrief } from "../memory/memory";
 import { generateText } from "../providers/llm";
 import { enqueue } from "../queue/queue";
 import { supabase } from "../supabase";
-import { assertBudget, orgIdOfAvatar, recordUsage } from "./billing";
+import { attachUsage, orgIdOfAvatar, recordUsage, releaseUsage } from "./billing";
 import { listWardrobe } from "./characterBible";
 import { breakIntoScenes, writeStory } from "./director";
 import { listLocations } from "./locations";
@@ -343,7 +343,7 @@ export async function produceEntry(entryId: string, opts: ProduceEntryOptions = 
   const type = entry.type === "photo" ? "photo" : entry.type === "carousel" ? "carousel" : "story";
   const estimate = type === "photo" ? 0.1 : 0.3;
   const orgId = await orgIdOfAvatar(entry.avatar_id);
-  if (orgId) await assertBudget(orgId, estimate);
+  const ledgerId = orgId ? await recordUsage({ orgId, avatarId: entry.avatar_id, kind: type, estimatedUsd: estimate }) : null; // réservation atomique
   const { data: item, error } = await supabase
     .from("content_items")
     .insert({
@@ -353,15 +353,19 @@ export async function produceEntry(entryId: string, opts: ProduceEntryOptions = 
     })
     .select("id")
     .single();
-  if (error || !item) throw new Error(`content insert: ${error?.message ?? ""}`);
+  if (error || !item) {
+    await releaseUsage(ledgerId);
+    throw new Error(`content insert: ${error?.message ?? ""}`);
+  }
   try {
     await enqueue("generate_text", { avatar_id: entry.avatar_id, content_item_id: item.id }, { contentItemId: item.id, avatarId: entry.avatar_id, label: entry.title });
   } catch (err) {
     await supabase.from("content_items").update({ status: "failed", error: String((err as Error)?.message ?? err).slice(0, 300) }).eq("id", item.id);
+    await releaseUsage(ledgerId);
     throw err;
   }
   await supabase.from("plan_entries").update({ status: "generating", content_item_id: item.id, updated_at: new Date().toISOString() }).eq("id", entry.id);
-  if (orgId) await recordUsage({ orgId, avatarId: entry.avatar_id, contentItemId: item.id, kind: type, estimatedUsd: estimate });
+  await attachUsage(ledgerId, item.id);
   return { itemId: item.id, estimate };
 }
 

@@ -144,6 +144,13 @@ function replaceDeep(value: unknown, map: (s: string) => string, depth = 0): unk
   return value;
 }
 
+/** Chemins de notre stockage référencés n'importe où dans une valeur JSON (nettoyage, rapports). */
+export function storagePathsIn(value: unknown): Set<string> {
+  const paths = new Set<string>();
+  collectPaths(value, paths);
+  return paths;
+}
+
 /** Réécrit toutes les URLs de notre stockage d'une valeur JSON en URLs signées (réponses au navigateur). */
 export async function signStorageUrlsDeep<T>(value: T, ttl: number = SIGN_TTL.web): Promise<T> {
   const paths = new Set<string>();

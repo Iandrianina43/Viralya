@@ -8,6 +8,8 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { badRequest } from "../lib/httpError";
 import { requireAvatar } from "../lib/scope";
 import { signedSseSender } from "../lib/storage";
+import { avatarReferencedPaths, cleanupDeletedAvatars } from "../lib/storageCleanup";
+import { logger } from "../logger";
 import { recordMemory } from "../memory/memory";
 import { generateVoiceSamples, listElevenVoices } from "../providers/elevenlabs";
 import { generateImage } from "../providers/image";
@@ -499,9 +501,13 @@ avatarsRouter.put(
 avatarsRouter.delete(
   "/:id",
   asyncHandler(async (req, res) => {
-    await requireAvatar(req.org!.id, String(req.params.id), "id");
-    const { error } = await supabase.from("avatars").delete().eq("id", req.params.id).eq("org_id", req.org!.id);
+    const avatarId = String(req.params.id);
+    await requireAvatar(req.org!.id, avatarId, "id");
+    // Références relevées AVANT la suppression (cascade) ; les fichiers que plus rien ne référence partent ensuite.
+    const referenced = await avatarReferencedPaths(avatarId).catch(() => new Set<string>());
+    const { error } = await supabase.from("avatars").delete().eq("id", avatarId).eq("org_id", req.org!.id);
     if (error) throw error;
     res.status(204).end();
+    cleanupDeletedAvatars([{ avatarId, referenced }]).catch((err) => logger.warn("storage_cleanup_failed", { avatarId, err: String((err as Error)?.message ?? err).slice(0, 160) }));
   }),
 );

@@ -124,49 +124,109 @@ export async function getBilling(orgId: string): Promise<BillingStatus> {
   };
 }
 
-/** Refuse (HTTP 402) une génération qui ferait dépasser le budget mensuel. */
+function budgetError(budget: number, spent: number, estimateUsd: number): HttpError {
+  return new HttpError(
+    402,
+    budget === 0
+      ? "Aucun forfait actif : choisis un forfait dans Paramètres › Abonnement pour lancer des générations."
+      : `Budget mensuel atteint : ${spent.toFixed(2)} $ dépensés sur ${budget.toFixed(2)} $, cette génération coûterait ≈ ${estimateUsd.toFixed(2)} $. Passe au forfait supérieur ou attends le mois prochain.`,
+  );
+}
+
+/** Pré-contrôle (HTTP 402) avant un travail coûteux ; la réservation atomique reste `recordUsage`. */
 export async function assertBudget(orgId: string, estimateUsd: number): Promise<void> {
   const org = await orgRow(orgId);
   const { budget } = effectiveBudget(org);
   if (budget == null) return;
   const spent = await monthSpend(orgId);
-  if (spent + estimateUsd > budget + 0.001) {
-    throw new HttpError(
-      402,
-      budget === 0
-        ? "Aucun forfait actif : choisis un forfait dans Paramètres › Abonnement pour lancer des générations."
-        : `Budget mensuel atteint : ${spent.toFixed(2)} $ dépensés sur ${budget.toFixed(2)} $, cette génération coûterait ≈ ${estimateUsd.toFixed(2)} $. Passe au forfait supérieur ou attends le mois prochain.`,
-    );
-  }
+  if (spent + estimateUsd > budget + 0.001) throw budgetError(budget, spent, estimateUsd);
 }
 
-/** Inscrit un lancement au registre, puis vérifie les seuils d'alerte (80 % et 100 %). */
-export async function recordUsage(o: { orgId: string; avatarId?: string | null; contentItemId?: string | null; kind: string; estimatedUsd: number }): Promise<void> {
-  const { error } = await supabase.from("usage_ledger").insert({
-    org_id: o.orgId,
-    avatar_id: o.avatarId ?? null,
-    content_item_id: o.contentItemId ?? null,
-    kind: o.kind,
-    estimated_usd: round(Math.max(0, o.estimatedUsd)),
-  });
-  if (error) {
-    logger.warn("usage_record_failed", { orgId: o.orgId, err: error.message });
-    return;
+export interface UsageInput { orgId: string; avatarId?: string | null; contentItemId?: string | null; kind: string; estimatedUsd: number }
+
+let reserveRpcMissing = false;
+
+/**
+ * RÉSERVE le budget et inscrit le lancement au registre en UNE opération (fonction SQL `reserve_usage`,
+ * migration 0020 : verrou sur l'organisation → deux lancements simultanés ne passent plus le même plafond).
+ * Refuse en 402 quand le plafond serait dépassé. Renvoie l'identifiant de la ligne (à rattacher au contenu
+ * avec `attachUsage` quand celui-ci est créé ensuite, à libérer avec `releaseUsage` si rien n'est lancé).
+ * Sans la migration 0020 : ancien chemin (vérification puis insertion), journalisé une fois.
+ */
+export async function recordUsage(o: UsageInput): Promise<string | null> {
+  const estimated = round(Math.max(0, o.estimatedUsd));
+  const org = await orgRow(o.orgId);
+  const { budget } = effectiveBudget(org);
+  let ledgerId: string | null = null;
+  let spent = 0;
+
+  if (!reserveRpcMissing) {
+    const { data, error } = await supabase.rpc("reserve_usage", {
+      p_org: o.orgId, p_avatar: o.avatarId ?? null, p_item: o.contentItemId ?? null, p_kind: o.kind, p_estimated: estimated, p_budget: budget,
+    });
+    if (error) {
+      if (error.code === "42883" || error.code === "PGRST202" || /reserve_usage|schema cache/i.test(error.message)) {
+        reserveRpcMissing = true;
+        logger.warn("reserve_usage_rpc_missing", { hint: "appliquer la migration 0020 (réservation atomique du budget)" });
+      } else if (/usage_ledger|relation|does not exist/i.test(error.message)) {
+        logger.warn("usage_record_failed", { orgId: o.orgId, err: error.message.slice(0, 160) }); // migration 0017 absente : facturation inactive
+        return null;
+      } else {
+        throw new Error(`réservation du budget impossible : ${error.message.slice(0, 160)}`);
+      }
+    } else {
+      const row = (Array.isArray(data) ? data[0] : data) as { ledger_id: string | null; spent: number | string; allowed: boolean } | undefined;
+      if (row && row.allowed === false) throw budgetError(budget ?? 0, Number(row.spent ?? 0), estimated);
+      ledgerId = row?.ledger_id ?? null;
+      spent = Number(row?.spent ?? 0);
+    }
   }
+  if (reserveRpcMissing) {
+    if (budget != null) {
+      const s = await monthSpend(o.orgId);
+      if (s + estimated > budget + 0.001) throw budgetError(budget, s, estimated);
+      spent = s + estimated;
+    }
+    const { data, error } = await supabase
+      .from("usage_ledger")
+      .insert({ org_id: o.orgId, avatar_id: o.avatarId ?? null, content_item_id: o.contentItemId ?? null, kind: o.kind, estimated_usd: estimated })
+      .select("id")
+      .single();
+    if (error) {
+      logger.warn("usage_record_failed", { orgId: o.orgId, err: error.message });
+      return null;
+    }
+    ledgerId = String(data.id);
+  }
+
+  // Seuils d'alerte (80 % et 100 %), jamais bloquants.
   try {
-    const org = await orgRow(o.orgId);
-    const { budget } = effectiveBudget(org);
-    if (budget == null || budget <= 0) return;
-    const spent = await monthSpend(o.orgId);
-    const before = spent - o.estimatedUsd;
-    const crossed = [0.8, 1].find((t) => before < budget * t && spent >= budget * t);
-    if (crossed) {
-      const { notifyBudget } = await import("./notifications");
-      await notifyBudget(o.orgId, spent, budget, crossed === 1 ? 100 : 80);
+    if (budget != null && budget > 0) {
+      const before = spent - estimated;
+      const crossed = [0.8, 1].find((t) => before < budget * t && spent >= budget * t);
+      if (crossed) {
+        const { notifyBudget } = await import("./notifications");
+        await notifyBudget(o.orgId, spent, budget, crossed === 1 ? 100 : 80);
+      }
     }
   } catch (err) {
     logger.warn("budget_alert_failed", { orgId: o.orgId, err: String((err as Error)?.message ?? err) });
   }
+  return ledgerId;
+}
+
+/** Rattache une réservation au contenu créé ensuite (le coût réel viendra par `settleUsage`). */
+export async function attachUsage(ledgerId: string | null, contentItemId: string): Promise<void> {
+  if (!ledgerId) return;
+  const { error } = await supabase.from("usage_ledger").update({ content_item_id: contentItemId }).eq("id", ledgerId);
+  if (error) logger.warn("usage_attach_failed", { ledgerId, contentItemId, err: error.message });
+}
+
+/** Libère une réservation dont le lancement n'a pas eu lieu (rien n'a été dépensé). */
+export async function releaseUsage(ledgerId: string | null): Promise<void> {
+  if (!ledgerId) return;
+  const { error } = await supabase.from("usage_ledger").update({ actual_usd: 0 }).eq("id", ledgerId);
+  if (error) logger.warn("usage_release_failed", { ledgerId, err: error.message });
 }
 
 /** Coût réel connu à la fin de la production (assemble) : remplace l'estimation. */

@@ -1,5 +1,6 @@
 import type { VlogScene } from "../../domain/director";
 import { buildSegmentPrompt } from "../../domain/director";
+import { cancelProviderTasks } from "../../domain/cancellation";
 import { concatClips } from "../../lib/ffmpeg";
 import { uploadBytes } from "../../lib/storage";
 import { logger } from "../../logger";
@@ -40,6 +41,7 @@ export async function pollVideoJob(job: JobRow): Promise<void> {
   // Annulation demandée pendant la production → on arrête la chaîne ici.
   if (item.status === "failed" || item.status === "canceled") {
     logger.info("poll_video_canceled", { itemId: id });
+    await cancelProviderTasks(item).catch(() => {});
     return;
   }
 

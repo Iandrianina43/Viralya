@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { cancelProviderTasks } from "../domain/cancellation";
 import { asyncHandler } from "../lib/asyncHandler";
 import { HttpError } from "../lib/httpError";
 import { requireContentItem } from "../lib/scope";
@@ -64,10 +65,12 @@ contentRouter.post(
     if (!["queued", "generating"].includes(item.status)) throw new HttpError(409, `production ${item.status} — rien à annuler`);
     await requestCancel(item.id);
     await supabase.from("content_items").update({ status: "canceled", error: "Production annulée" }).eq("id", item.id);
+    // Tâches déjà soumises au fournisseur : annulées si encore en attente (celles en cours de rendu vont au bout).
+    const provider = await cancelProviderTasks({ id: item.id, assets: item.assets as Record<string, unknown> | null });
     // Registre : seul ce qui a réellement été rendu reste compté.
     const { settleUsage } = await import("../domain/billing");
     await settleUsage(item.id, Number((item.assets as Record<string, unknown> | null)?.estimated_cost_usd ?? 0));
-    res.json({ ok: true });
+    res.json({ ok: true, provider });
   }),
 );
 

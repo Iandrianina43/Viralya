@@ -49,6 +49,10 @@ cp apps/web/.env.example apps/web/.env    # VITE_API_BASE_URL (http://localhost:
 - `0014_daily_plan_guard.sql` : verrou (influenceur, jour) du contenu quotidien et fin de l'empilement des `plan_day` (incident du 3 sept. 2026).
 - `0015_hybrid_video_jobs.sql` **obligatoire pour la vidéo hybride** : jobs `generate_voice`, `generate_shots`, `poll_shots`.
 - `0016_phase3_calendar_social_ugc.sql` **obligatoire pour la phase 3** : calendrier éditorial (`content_plans`, `plan_entries`), compte social simulé (`social_profiles`, colonnes `stats`, `ai_label`, `publish_provider`…), campagnes UGC (`ugc_campaigns`, `ugc_variants`), connexions de publication (`social_connections`), jobs `generate_plan` et `sync_stats`.
+- `0017_billing_platform.sql` : abonnements Stripe, budget mensuel, registre `usage_ledger`, pilote automatique, `system_status`.
+- `0018_security_invites_audit.sql` : RLS sur les tables restantes, invitations d'équipe, journal d'audit.
+- `0019_zernio_connections.sql` : publication réelle Zernio (profil par influenceur, comptes connectés, idempotence des webhooks).
+- `0020_budget_reservation.sql` : fonction `reserve_usage` (réservation atomique du budget). Sans elle, le code retombe sur l'ancien chemin.
 
 ### Contrôle qualité des visages (optionnel mais recommandé)
 

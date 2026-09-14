@@ -14,6 +14,7 @@ import { acceptInvites, ensurePersonalOrg, invalidateOrgCache, listUserOrgs } fr
 import { config } from "../config";
 import { asyncHandler } from "../lib/asyncHandler";
 import { auditLog } from "../lib/audit";
+import { cleanupDeletedAvatars, snapshotOrgAvatars } from "../lib/storageCleanup";
 import { logger } from "../logger";
 import { emailConfigured, emailLayout, sendEmail } from "../providers/email";
 import { supabase } from "../supabase";
@@ -28,8 +29,10 @@ async function purgeUserData(userId: string): Promise<{ deletedOrgs: number }> {
     if (m.role === "owner") {
       const { data: owners } = await supabase.from("memberships").select("user_id").eq("org_id", m.org_id).eq("role", "owner");
       if ((owners ?? []).length <= 1) {
+        const snapshots = await snapshotOrgAvatars(m.org_id).catch(() => []);
         await supabase.from("organizations").delete().eq("id", m.org_id);
         deletedOrgs++;
+        cleanupDeletedAvatars(snapshots, [`${m.org_id}/`]).catch((err) => logger.warn("storage_cleanup_failed", { orgId: m.org_id, err: String((err as Error)?.message ?? err).slice(0, 160) }));
         continue;
       }
     }

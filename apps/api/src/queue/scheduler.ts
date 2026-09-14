@@ -12,6 +12,8 @@ import { supabase } from "../supabase";
 export const HEARTBEAT_KEY = "worker";
 const AUTO_KEY = "calendar_auto";
 const AUTO_EVERY_MS = 30 * 60_000;
+const SWEEP_KEY = "storage_sweep";
+const SWEEP_EVERY_MS = 24 * 3600_000;
 
 export async function heartbeat(workerId: string): Promise<void> {
   const { error } = await supabase
@@ -61,6 +63,15 @@ export async function schedulerTick(workerId: string): Promise<void> {
       if (n) logger.info("calendar_auto_produced", { entries: n });
     } catch (err) {
       logger.warn("calendar_auto_failed", { err: String((err as Error)?.message ?? err) });
+    }
+  }
+  // Nettoyage quotidien : sources de clone (≤ 200 Mo chacune) de plus de 7 jours sans contenu en cours.
+  if (await claimTask(SWEEP_KEY, SWEEP_EVERY_MS, workerId)) {
+    try {
+      const { purgeOldSources } = await import("../lib/storageCleanup");
+      await purgeOldSources(7);
+    } catch (err) {
+      logger.warn("storage_sweep_failed", { err: String((err as Error)?.message ?? err) });
     }
   }
 }

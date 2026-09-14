@@ -2,7 +2,7 @@ import express, { Router } from "express";
 import { config } from "../config";
 import { buildContextBrief } from "../context/contextBuilder";
 import { breakIntoScenes, directVlog, writeStory, VLOG_PRESETS, type VlogProduction, type VlogScene } from "../domain/director";
-import { assertBudget, recordUsage } from "../domain/billing";
+import { assertBudget, attachUsage, recordUsage, releaseUsage } from "../domain/billing";
 import { launchProduction, type LaunchOptions } from "../domain/production";
 import { emailConfigured } from "../providers/email";
 import { stripeConfigured } from "../providers/stripe";
@@ -257,6 +257,7 @@ studioRouter.post(
     const avatar = await requireAvatar<AvatarCore>(req.org!.id, avatarId, AVATAR_CORE);
 
     const { send, end } = sse(res);
+    let ledgerId: string | null = null;
     try {
       send({ type: "step", step: "context", label: "Lecture du contexte (météo, heure, mémoire, lieux)…" });
       const { listLocations, createLocation } = await import("../domain/locations");
@@ -277,7 +278,7 @@ studioRouter.post(
       );
       send({ type: "production", production });
       const vlogEstimate = estimateProductionCost(DEFAULT_SEEDANCE_MODEL, DEFAULT_SEEDANCE_RESOLUTION, production.scenes.map((s) => clampDuration(Number(s.duration_sec) || 12))).total;
-      await assertBudget(req.org!.id, vlogEstimate);
+      ledgerId = await recordUsage({ orgId: req.org!.id, avatarId, kind: "video", estimatedUsd: vlogEstimate }); // réservation atomique
 
       const known = new Set(locations.map((l) => l.key));
       for (const sc of production.scenes) {
@@ -305,9 +306,11 @@ studioRouter.post(
       if (error || !item) throw new Error(`insert failed: ${error?.message ?? ""}`);
 
       await enqueue("generate_video", { avatar_id: avatarId, content_item_id: item.id }, { contentItemId: item.id, avatarId, label: production.title });
-      await recordUsage({ orgId: req.org!.id, avatarId, contentItemId: item.id, kind: "video", estimatedUsd: vlogEstimate });
+      await attachUsage(ledgerId, item.id);
+      ledgerId = null;
       send({ type: "enqueued", content_item_id: item.id });
     } catch (err) {
+      await releaseUsage(ledgerId); // rien n'a été lancé : la réservation est rendue
       send({ type: "error", error: String((err as Error)?.message ?? err) });
     } finally {
       await end();
@@ -326,16 +329,19 @@ studioRouter.post(
     if (!VLOG_PRESETS[preset]) throw badRequest(`preset inconnu (${Object.keys(VLOG_PRESETS).join(", ")})`);
     await requireAvatar(req.org!.id, avatarId, "id");
     const clipEstimate = estimateProductionCost(DEFAULT_SEEDANCE_MODEL, DEFAULT_SEEDANCE_RESOLUTION, [15]).total;
-    await assertBudget(req.org!.id, clipEstimate);
+    const ledgerId = await recordUsage({ orgId: req.org!.id, avatarId, kind: "clip", estimatedUsd: clipEstimate }); // réservation atomique
     const label = VLOG_PRESETS[preset]!.label;
     const { data: item, error } = await supabase
       .from("content_items")
       .insert({ avatar_id: avatarId, type: "video", network: "tiktok", ratio_class: "value", status: "generating", title: label, payload: { preset, theme: label } })
       .select("id")
       .single();
-    if (error || !item) throw new Error(`generate-clip insert failed: ${error?.message ?? ""}`);
+    if (error || !item) {
+      await releaseUsage(ledgerId);
+      throw new Error(`generate-clip insert failed: ${error?.message ?? ""}`);
+    }
     const job = await enqueue("generate_video", { avatar_id: avatarId, content_item_id: item.id }, { contentItemId: item.id, avatarId, label });
-    await recordUsage({ orgId: req.org!.id, avatarId, contentItemId: item.id, kind: "clip", estimatedUsd: clipEstimate });
+    await attachUsage(ledgerId, item.id);
     res.status(202).json({ ok: true, job_id: job.id, content_item_id: item.id });
   }),
 );
@@ -350,7 +356,7 @@ studioRouter.post(
     if (!piapiConfigured()) throw badRequest("PiAPI non configuré (PIAPI_API_KEY dans .env)");
     const avatar = await requireAvatar<{ id: string; ref_image_url: string | null }>(req.org!.id, avatarId, "id, ref_image_url");
     if (!avatar.ref_image_url) throw badRequest("Génère d'abord le portrait de l'influenceur.");
-    await assertBudget(req.org!.id, 0.15);
+    const ledgerId = await recordUsage({ orgId: req.org!.id, avatarId, kind: "photo", estimatedUsd: 0.15 }); // réservation atomique
 
     const { isPiapiImageModel } = await import("../providers/piapiImage");
     const model = isPiapiImageModel(req.body?.model) ? req.body.model : undefined;
@@ -371,9 +377,12 @@ studioRouter.post(
       })
       .select("id")
       .single();
-    if (error || !item) throw new Error(`insert failed: ${error?.message ?? ""}`);
+    if (error || !item) {
+      await releaseUsage(ledgerId);
+      throw new Error(`insert failed: ${error?.message ?? ""}`);
+    }
     const job = await enqueue("generate_text", { avatar_id: avatarId, content_item_id: item.id }, { contentItemId: item.id, avatarId, label: title });
-    await recordUsage({ orgId: req.org!.id, avatarId, contentItemId: item.id, kind: "photo", estimatedUsd: 0.15 });
+    await attachUsage(ledgerId, item.id);
     res.status(202).json({ ok: true, job_id: job.id, content_item_id: item.id });
   }),
 );

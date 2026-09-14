@@ -5,6 +5,8 @@ import { config } from "../config";
 import { asyncHandler } from "../lib/asyncHandler";
 import { auditLog } from "../lib/audit";
 import { badRequest, forbidden, notFound } from "../lib/httpError";
+import { cleanupDeletedAvatars, snapshotOrgAvatars } from "../lib/storageCleanup";
+import { logger } from "../logger";
 import { emailConfigured, emailLayout, sendEmail } from "../providers/email";
 import { supabase } from "../supabase";
 
@@ -179,10 +181,13 @@ orgsRouter.delete(
     const { data: org } = await supabase.from("organizations").select("id, name").eq("id", orgId).maybeSingle();
     if (!org) throw notFound("Organisation");
     if (String(req.body?.confirm ?? "").trim().toLowerCase() !== String(org.name).trim().toLowerCase()) throw badRequest("Retape le nom exact de l'espace pour confirmer.");
+    const snapshots = await snapshotOrgAvatars(orgId).catch(() => []);
     const { error } = await supabase.from("organizations").delete().eq("id", orgId);
     if (error) throw new Error(error.message);
     invalidateOrgCache();
-    await auditLog("org_deleted", { orgId, userId: req.user!.id, details: { name: org.name } });
+    await auditLog("org_deleted", { orgId, userId: req.user!.id, details: { name: org.name, avatars: snapshots.length } });
     res.status(204).end();
+    // Les portraits de création vivent sous `<org_id>/faces/` : le préfixe de l'espace part aussi.
+    cleanupDeletedAvatars(snapshots, [`${orgId}/`]).catch((err) => logger.warn("storage_cleanup_failed", { orgId, err: String((err as Error)?.message ?? err).slice(0, 160) }));
   }),
 );
