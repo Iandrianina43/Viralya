@@ -133,6 +133,18 @@ page ouverte (Studio → Génération, Bible → Univers…). « Plus tard » re
    tâches, UGC, lancement, calendrier). Le tableau de bord admin garde le solde PiAPI en dollars.
 5. **Régénérer un lieu avec une consigne** : « plus lumineux, sans le canapé… ».
 
+**Tests réels du 14 sept. (Alexandre Weber)**
+- Vlog économique « Trois règles avant midi » : 7 scènes (4 parlées, 3 coupes en images), estimation 12,24 $, coût
+  réel 7,32 $, vidéo de 30 s en revue. Le plan d'accroche a été perdu : Seedance 2.5 a refusé l'audio trois fois
+  (« input audio may contain sensitive information ») — texte anodin, les trois autres plans avec la même voix sont
+  passés. Corrigé : au deuxième refus le plan passe à Kling Avatar (testé sur cet audio : clip rendu, 0,26 $ ;
+  OmniHuman a échoué deux fois « Internal error »). Le même keyframe « à revoir » avait été regénéré quatre fois
+  (0,57 $) : un keyframe est maintenant réutilisé tant qu'il n'est pas « fail », et son coût est compté sur le plan
+  même si le rendu échoue.
+- Planning novembre 2026 depuis l'analyse : 26 entrées (13 vidéos, 8 photos, 4 carrousels, 1 story), les trois arcs
+  proposés (« 30 jours sans excuse » sur 10 entrées), piliers respectés, ratio 19 valeur / 6 preuve / 1 vente, coût LLM
+  négligeable.
+
 ## 13. Reste à faire (audit du 7 sept., voir docs/AUDIT-PROD.md)
 
 Voir l'audit complet : UX/UI, gestion des organisations, robustesse, données, coûts. Bloqué par des clés :

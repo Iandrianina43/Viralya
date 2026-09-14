@@ -116,8 +116,12 @@ export interface ShotState {
 export function isAudioRejected(err: unknown): boolean {
   return /input audio.*sensitive|audio.*rejected|sensitive.*audio/i.test(String((err as Error)?.message ?? err));
 }
-/** Moteur de parole de repli quand Seedance 2.5 refuse l'audio : OmniHuman (lip-sync sur le keyframe, recommandé pour le français). */
-export const TALK_FALLBACK_PROVIDER: TalkProvider = "omnihuman";
+/**
+ * Moteur de parole de repli quand Seedance 2.5 refuse l'audio (« input audio may contain sensitive information »).
+ * Mesuré le 14 sept. 2026 sur l'audio refusé : OmniHuman → « Internal error » deux fois sur deux ; Kling Avatar →
+ * clip rendu en 8 min pour 0,26 $. Kling est donc le repli (lip-sync sur le keyframe, même voix ElevenLabs).
+ */
+export const TALK_FALLBACK_PROVIDER: TalkProvider = "kling-avatar";
 /** À appeler quand une soumission de plan parlé échoue : compte les refus audio et bascule au 2e. */
 export function noteAudioRejection(shot: ShotState, err: unknown): boolean {
   if (shot.role !== "talk" || !isAudioRejected(err)) return false;
