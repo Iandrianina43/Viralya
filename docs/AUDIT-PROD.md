@@ -110,7 +110,7 @@ corrigé le jour même, ce qui reste à faire par priorité, et ce qui dépend d
   migration `schema_migrations` avec refus de démarrer si une migration manque.
 
 ## 3. Décisions et actions qui t'appartiennent
-1. Appliquer les migrations **0017**, **0018**, **0019** (Zernio) et **0020** (budget atomique) dans Supabase.
+1. Migrations : toutes appliquées (0001 → 0022, vérifié le 14 sept.).
 2. Poser `LEGAL_EDITOR` (raison sociale, adresse, contact) et faire relire les pages légales.
 3. Créer les comptes Stripe et Resend, poser les clés, vérifier le domaine d'envoi.
 4. Publication réelle : **Zernio retenu et codé le 7 septembre** (voir docs/RECHERCHE-PUBLICATION.md § 5). À faire :

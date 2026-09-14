@@ -104,9 +104,9 @@ client a toujours intérêt à monter de plan plutôt qu'à empiler des top-up.
   Équilibre atteint en 3 à 4 mois, perte ensuite. Retenu : **T1 30 · T2 60 · T3 120 · Stack 360
   crédits/mois**, plafond dur, top-up au tarif Micro. À traiter comme du marketing, pas du revenu.
 
-## 7. Ce que ça change dans le code (chantier B)
+## 7. Ce que ça change dans le code (fait le 14 sept. 2026)
 
-Migration 0021 : portefeuille (solde mensuel expirant + solde top-up persistant + quotas de sessions),
+Migration 0022 : portefeuille (solde mensuel expirant + solde top-up persistant + quotas de sessions),
 mouvements de crédits, table `pricing_config` versionnée (constantes, packs, top-up, historique),
 `plan_features`. `recordUsage` réserve en crédits (même verrou que la 0020), ordre mensuel puis top-up,
 remise à zéro du mensuel sur `invoice.paid` (date anniversaire Stripe). Checkout en CHF, setup en ligne

@@ -115,14 +115,20 @@ export interface Setup {
   default_video_provider: string;
 }
 
-// Facturation et budget de génération (7 sept. 2026).
-export interface Plan { code: string; name: string; price_eur: number; budget_usd: number; avatars: number; description: string }
+// Facturation en crédits (14 sept. 2026) : 1 crédit = 0,10 $ de coût fournisseur, prix en CHF.
+export interface PlanSetup { code: string; label: string; price_chf: number; required: boolean }
+export interface Plan { code: string; name: string; price_chf: number; credits: number; avatars: number | null; platforms: number | null; auto_pilot: boolean; support: string; description: string; setup: PlanSetup | null }
+export interface Topup { code: string; name: string; credits: number; price_chf: number }
+export interface PlanLimits { avatars: number | null; platforms: number | null; auto_pilot: boolean; plan_name: string | null }
 export interface BillingStatus {
   stripe_configured: boolean; plan: Plan | null; subscription_status: string | null; current_period_end: string | null;
-  budget_usd: number | null; spent_usd: number; remaining_usd: number | null; month: string; plans: Plan[];
-  billing_email: string | null; has_customer: boolean; budget_source: "plan" | "manual" | "default" | "unlimited";
+  budget_source: "plan" | "manual" | "default" | "unlimited";
+  credits: { monthly: number; monthly_granted: number; topup: number; total: number; period_end: string | null } | null;
+  spent_usd: number; spent_credits: number; month: string; plans: Plan[]; topups: Topup[]; credit_usd: number; currency: "CHF";
+  billing_email: string | null; has_customer: boolean; setup_paid: boolean; limits: PlanLimits;
 }
-export interface UsageRow { id: string; kind: string; estimated_usd: number; actual_usd: number | null; content_item_id: string | null; avatar_id: string | null; created_at: string }
+export interface CreditTransaction { id: string; kind: string; credits: number; monthly_part: number; topup_part: number; note: string | null; created_at: string }
+export interface UsageRow { id: string; kind: string; estimated_usd: number; actual_usd: number | null; credits: number | null; content_item_id: string | null; avatar_id: string | null; created_at: string }
 export interface Stats { avatars: number; content_total: number; content_live: number; in_progress?: number; to_review?: number; failed?: number }
 export interface PiapiBalance { configured: boolean; account_name?: string; credits?: number; balance_usd?: number }
 export interface PiapiHistoryEntry { task_id: string; created_at: string; model: string; status: string; cost_usd: number; video_url: string | null }
@@ -525,10 +531,11 @@ export const api = {
 
   // Facturation et budget.
   billing: () => req<BillingStatus>("/billing"),
-  billingUsage: () => req<{ usage: UsageRow[] }>("/billing/usage"),
-  billingCheckout: (plan: string) => req<{ url: string }>("/billing/checkout", { method: "POST", body: JSON.stringify({ plan }) }),
+  billingCheckout: (plan: string, with_setup = false) => req<{ url: string }>("/billing/checkout", { method: "POST", body: JSON.stringify({ plan, with_setup }) }),
   billingPortal: () => req<{ url: string }>("/billing/portal", { method: "POST", body: "{}" }),
-  billingSetBudget: (monthly_budget_usd: number | null, org_id?: string) => req<{ ok: boolean }>("/billing/budget", { method: "PUT", body: JSON.stringify({ monthly_budget_usd, org_id }) }),
+  billingSetBudget: (monthly_credits: number | null, org_id?: string) => req<{ ok: boolean }>("/billing/budget", { method: "PUT", body: JSON.stringify({ monthly_credits, org_id }) }),
+  billingTopup: (topup: string) => req<{ url: string }>("/billing/topup", { method: "POST", body: JSON.stringify({ topup }) }),
+  billingUsage: () => req<{ usage: UsageRow[]; transactions: CreditTransaction[] }>("/billing/usage"),
   // Pilote automatique du calendrier.
   updatePlanAuto: (avatarId: string, month: string, b: { auto_produce?: boolean; auto_lead_days?: number }) =>
     req<{ auto: { auto_produce: boolean; auto_lead_days: number } }>(`/calendar/avatars/${avatarId}/plans/${month}`, { method: "PATCH", body: JSON.stringify(b) }),

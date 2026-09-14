@@ -418,7 +418,7 @@ export async function produceDueEntries(limit = 3): Promise<number> {
       } catch (err) {
         const msg = String((err as Error)?.message ?? err);
         logger.warn("calendar_auto_entry_failed", { entryId: e.id, err: msg.slice(0, 200) });
-        if (/budget|forfait/i.test(msg)) return produced;
+        if (/budget|forfait|crédit/i.test(msg)) return produced;
       }
     }
   }

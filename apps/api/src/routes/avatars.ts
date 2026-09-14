@@ -3,7 +3,7 @@ import { Router } from "express";
 import { chatAvatar, chatAvatarStream, type ChatMessage } from "../domain/avatarChat";
 import { buildCharacterSheetPrompt, buildPortraitPrompt, draftPortraitSpec, normalizePortraitSpec } from "../domain/faceGen";
 import { buildSystemPrompt } from "../domain/systemPrompt";
-import { assertBudget, recordUsage } from "../domain/billing";
+import { assertBudget, recordUsage, requireAvatarSlot } from "../domain/billing";
 import { asyncHandler } from "../lib/asyncHandler";
 import { badRequest } from "../lib/httpError";
 import { requireAvatar } from "../lib/scope";
@@ -469,6 +469,7 @@ avatarsRouter.post(
       return;
     }
     const system_prompt = buildSystemPrompt(parsed.data);
+    await requireAvatarSlot(req.org!.id);
     const { data, error } = await supabase.from("avatars").insert({ ...parsed.data, system_prompt, org_id: req.org!.id }).select("*").single();
     if (error) throw error;
     res.status(201).json({ avatar: data });

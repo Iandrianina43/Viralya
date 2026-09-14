@@ -53,6 +53,7 @@ cp apps/web/.env.example apps/web/.env    # VITE_API_BASE_URL (http://localhost:
 - `0018_security_invites_audit.sql` : RLS sur les tables restantes, invitations d'équipe, journal d'audit.
 - `0019_zernio_connections.sql` : publication réelle Zernio (profil par influenceur, comptes connectés, idempotence des webhooks).
 - `0020_budget_reservation.sql` : fonction `reserve_usage` (réservation atomique du budget). Sans elle, le code retombe sur l'ancien chemin.
+- `0022_credits.sql` : tarification en crédits — `pricing_config` (tarifs versionnés), `credit_wallets` (solde mensuel + solde acheté), `credit_transactions`, fonctions `reserve_credits` / `adjust_credits` / `grant_credits`, `organizations.manual_monthly_credits`. Sans elle : registre en dollars seul, aucun plafond.
 - `0021_launch_kit.sql` : table `launch_kits` (kit de lancement : identité de compte, bios, bannières, checklist). Sans elle, la page Lancement répond 503 avec le message explicite.
 
 ### Contrôle qualité des visages (optionnel mais recommandé)
@@ -97,7 +98,7 @@ son organisation personnelle ; un propriétaire peut ajouter des membres par ema
 | `/api/launch` | session + organisation | kit de lancement d'un influenceur : `GET /avatars/:id` (identité, bios, bannières, checklist, règles par réseau), `POST /avatars/:id/identity` (LLM ≈ 0,05 $ : réseaux recommandés, noms de compte valables partout, e-mail, bios aux limites du réseau, accroches), `PATCH /avatars/:id` (bios, nom retenu, notes, checklist), `POST /avatars/:id/banners` {network: youtube·facebook·x, with_avatar, hook} (fond IA 2K + accroche composée par ffmpeg/libass dans la zone sûre, ≈ 0,08-0,14 $), `DELETE /avatars/:id/banners/:bannerId`. Rien n'est automatisé côté réseaux (disponibilité des noms, validation par téléphone) : volontaire |
 | `/api/social` | session + organisation | compte social par influenceur et par réseau (profil, feed, statistiques simulées ou réelles), « publier maintenant », comptes connectés via Zernio (`/connections/connect` → OAuth hébergé, `/connections/sync`), remontée des stats ; webhook Zernio signé sur `POST /api/social/zernio/webhook` |
 | `/api/ugc` | session + organisation | campagnes UGC : produit + matrice (influenceurs × angles × accroches × durées × CTA) → scripts en 7 temps, production vidéo par variante avec mentions légales incrustées |
-| `/api/billing` | session + organisation | forfait et budget du mois (`GET /`), registre (`/usage`), Stripe Checkout (`/checkout`), portail (`/portal`), budget manuel admin (`PUT /budget`) ; webhook Stripe signé sur `POST /api/billing/webhook` |
+| `/api/billing` | session + organisation | crédits (`GET /` : soldes mensuel et acheté, forfait, limites, tarifs), registre et mouvements (`/usage`), Stripe Checkout d'un forfait en CHF avec setup en ligne séparée (`POST /checkout {plan, with_setup}`), achat de crédits en paiement unique (`POST /topup {topup}`), portail (`/portal`), tarifs (`GET /pricing`, `PUT /pricing` admin : nouvelle version historisée, plancher ×1,2 vérifié), crédits manuels admin (`PUT /budget {monthly_credits}`) ; webhook Stripe signé sur `POST /api/billing/webhook` (souscription, facture payée → nouvelle période de crédits, top-up crédité, idempotent) |
 | `/api/admin` | rôle admin ou `x-admin-key` | jobs globaux, reprise manuelle, déclenchement du quotidien |
 
 L'organisation active est lue dans l'en-tête `x-org-id` (sinon la première de l'utilisateur).
@@ -188,7 +189,7 @@ Détail et décisions : [docs/PLAN-PLATEFORME.md](docs/PLAN-PLATEFORME.md). Migr
 - **Abonnements Stripe** (Checkout, portail client, webhooks) et **budget mensuel de génération** par
   organisation : chaque lancement est estimé, refusé (HTTP 402) au-delà du budget, inscrit dans
   `usage_ledger` puis corrigé au coût réel. Paramètres › Abonnement et budget. Variables
-  `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `DEFAULT_MONTHLY_BUDGET_USD`.
+  `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `DEFAULT_MONTHLY_BUDGET_USD` (converti en crédits : 1 crédit = 0,10 $). Tarification : docs/TARIFICATION-CREDITS.md.
 - **E-mails** (Resend) : contenu prêt à valider, échec, budget à 80 % et 100 %. `RESEND_API_KEY`, `EMAIL_FROM`.
 - **Publication réelle** (Zernio) : `ZERNIO_API_KEY`, `ZERNIO_WEBHOOK_SECRET` (webhook enregistré au démarrage vers
   `https://<site>/api/social/zernio/webhook`). Coût plateforme : 2 comptes connectés gratuits puis 6 $/compte/mois.

@@ -80,14 +80,15 @@ export async function notifyConnectionLost(connectionId: string): Promise<void> 
 }
 
 /** Seuil de budget atteint (80 % ou 100 %). */
-export async function notifyBudget(orgId: string, spentUsd: number, budgetUsd: number, level: 80 | 100): Promise<void> {
+/** Seuils du solde mensuel de crédits (80 % / 100 %). */
+export async function notifyBudget(orgId: string, usedCredits: number, grantedCredits: number, level: 80 | 100): Promise<void> {
   await notifyOrg(
     orgId,
-    level === 100 ? "Budget du mois épuisé" : "80 % du budget du mois utilisé",
+    level === 100 ? "Crédits du mois épuisés" : "80 % des crédits du mois utilisés",
     emailLayout(
-      level === 100 ? "Budget mensuel atteint" : "Plus que 20 % de budget",
-      `<p>${spentUsd.toFixed(2)} $ de génération utilisés sur ${budgetUsd.toFixed(2)} $ ce mois-ci.</p><p>${level === 100 ? "Les nouvelles générations sont bloquées jusqu'au mois prochain, sauf changement de forfait." : "Pense à passer au forfait supérieur si tu veux continuer à produire ce mois-ci."}</p>`,
-      { label: "Gérer mon forfait", url: `${site()}/settings` },
+      level === 100 ? "Crédits mensuels épuisés" : "Plus que 20 % des crédits du mois",
+      `<p>${Math.round(usedCredits)} crédits utilisés sur ${Math.round(grantedCredits)} ce mois-ci.</p><p>${level === 100 ? "Les nouvelles générations puisent dans tes crédits achetés, puis s'arrêtent jusqu'à la prochaine période. Tu peux acheter des crédits ou changer de forfait." : "Pense à acheter des crédits ou à passer au forfait supérieur si tu veux continuer à produire ce mois-ci."}</p>`,
+      { label: "Gérer mes crédits", url: `${site()}/settings` },
     ),
   );
 }

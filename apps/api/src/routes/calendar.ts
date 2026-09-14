@@ -48,7 +48,10 @@ calendarRouter.patch(
   asyncHandler(async (req, res) => {
     await requireAvatar(req.org!.id, String(req.params.id), "id");
     const patch: Partial<PlanAuto> = {};
-    if (typeof req.body?.auto_produce === "boolean") patch.auto_produce = req.body.auto_produce;
+    if (typeof req.body?.auto_produce === "boolean") {
+      if (req.body.auto_produce) { const { requireAutoPilot } = await import("../domain/billing"); await requireAutoPilot(req.org!.id); }
+      patch.auto_produce = req.body.auto_produce;
+    }
     if (req.body?.auto_lead_days != null) patch.auto_lead_days = Number(req.body.auto_lead_days);
     res.json({ auto: await updatePlanAuto(String(req.params.id), String(req.params.month), patch) });
   }),

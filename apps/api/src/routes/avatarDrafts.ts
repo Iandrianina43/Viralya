@@ -110,6 +110,7 @@ avatarDraftsRouter.post(
       return;
     }
     const system_prompt = buildSystemPrompt(parsed.data);
+    { const { requireAvatarSlot } = await import("../domain/billing"); await requireAvatarSlot(orgId); }
     const { data: avatar, error: insErr } = await supabase
       .from("avatars")
       .insert({ ...parsed.data, system_prompt, org_id: orgId })

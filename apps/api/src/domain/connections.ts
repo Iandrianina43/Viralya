@@ -53,6 +53,7 @@ export async function startConnect(o: { orgId: string; userId?: string | null; a
   const platform = zernio.ZERNIO_PLATFORM[o.network];
   if (!platform) throw badRequest(`Réseau non pris en charge : ${o.network}`);
   if (!publisherConfigured()) throw new HttpError(503, "Publication réelle non configurée sur ce serveur (ZERNIO_API_KEY absente).");
+  { const { requirePlatformSlot } = await import("./billing"); await requirePlatformSlot(o.orgId, o.network); }
   const profileId = await publisherProfileId(o.avatarId);
   const redirect = `${config.WEB_BASE_URL.replace(/\/$/, "")}/avatars/${o.avatarId}/social?connect=zernio`;
   const url = await zernio.connectUrl(platform, profileId, redirect);

@@ -48,16 +48,22 @@ export function Settings() {
   const [billingMsg, setBillingMsg] = useState<string | null>(null);
   const [budgetInput, setBudgetInput] = useState("");
   const loadBilling = () =>
-    api.billing().then((b) => { setBilling(b); setBudgetInput(b.budget_source === "manual" && b.budget_usd != null ? String(b.budget_usd) : ""); }).catch((e) => setBillingMsg(String(e.message ?? e)));
+    api.billing().then((b) => { setBilling(b); setBudgetInput(b.budget_source === "manual" && b.credits ? String(b.credits.monthly_granted) : ""); }).catch((e) => setBillingMsg(String(e.message ?? e)));
   useEffect(() => {
     loadBilling();
     const q = new URLSearchParams(window.location.search);
     if (q.get("billing") === "success") setBillingMsg("Abonnement enregistré ✓ — la mise à jour prend quelques secondes.");
     if (q.get("billing") === "cancel") setBillingMsg("Paiement annulé.");
+    if (q.get("billing") === "topup") setBillingMsg("Crédits achetés ✓ — ils apparaissent dans quelques secondes.");
   }, []);
-  const checkout = async (plan: string) => {
+  const checkout = async (plan: string, withSetup = false) => {
     setBillingBusy(true); setBillingMsg(null);
-    try { const r = await api.billingCheckout(plan); window.location.href = r.url; }
+    try { const r = await api.billingCheckout(plan, withSetup); window.location.href = r.url; }
+    catch (e) { setBillingMsg(String((e as Error).message ?? e)); setBillingBusy(false); }
+  };
+  const topup = async (code: string) => {
+    setBillingBusy(true); setBillingMsg(null);
+    try { const r = await api.billingTopup(code); window.location.href = r.url; }
     catch (e) { setBillingMsg(String((e as Error).message ?? e)); setBillingBusy(false); }
   };
   const portal = async () => {
@@ -67,7 +73,7 @@ export function Settings() {
   };
   const saveBudget = async () => {
     setBillingBusy(true); setBillingMsg(null);
-    try { await api.billingSetBudget(budgetInput.trim() === "" ? null : Number(budgetInput)); await loadBilling(); setBillingMsg("Budget enregistré ✓"); }
+    try { await api.billingSetBudget(budgetInput.trim() === "" ? null : Math.round(Number(budgetInput))); await loadBilling(); setBillingMsg("Crédits enregistrés ✓"); }
     catch (e) { setBillingMsg(String((e as Error).message ?? e)); } finally { setBillingBusy(false); }
   };
 
@@ -281,35 +287,58 @@ export function Settings() {
           )}
         </Section>
 
-        {/* Abonnement et budget de génération */}
-        <Section title="Abonnement et budget" subtitle="Ce que Viralya dépense en IA pour cet espace ce mois-ci, et ton forfait.">
+        {/* Abonnement et crédits */}
+        <Section title="Abonnement et crédits" subtitle="1 crédit = 0,10 $ de coût fournisseur. Les crédits du mois partent en premier, les crédits achetés ensuite et ne périment pas.">
           {billing ? (
             <div className="space-y-4">
-              <div>
-                <div className="flex items-center justify-between text-sm mb-1 gap-3">
-                  <span className="text-slate-600">
-                    {billing.plan ? `Forfait ${billing.plan.name}` : billing.budget_source === "manual" ? "Budget fixé par l'administrateur" : billing.budget_usd == null ? "Sans limite (espace interne)" : "Sans forfait"}
-                    {billing.subscription_status && billing.subscription_status !== "active" ? ` · ${billing.subscription_status}` : ""}
-                  </span>
-                  <span className="font-semibold text-ink whitespace-nowrap">{billing.spent_usd.toFixed(2)} $ {billing.budget_usd != null ? `/ ${billing.budget_usd.toFixed(0)} $` : ""} <span className="text-xs font-normal text-slate-400">ce mois</span></span>
-                </div>
-                {billing.budget_usd != null && billing.budget_usd > 0 && (
-                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                    <div className={`h-full ${billing.spent_usd / billing.budget_usd > 0.8 ? "bg-rose-500" : "bg-accent"}`} style={{ width: `${Math.min(100, (billing.spent_usd / billing.budget_usd) * 100)}%` }} />
-                  </div>
-                )}
-                {billing.current_period_end && <div className="text-xs text-slate-400 mt-1">Renouvellement le {new Date(billing.current_period_end).toLocaleDateString("fr-FR")}</div>}
+              <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                <span className="text-slate-600">
+                  {billing.plan ? `Forfait ${billing.plan.name} · ${billing.plan.price_chf} CHF/mois` : billing.budget_source === "manual" ? "Crédits fixés par l'administrateur" : billing.budget_source === "unlimited" ? "Sans limite (espace interne)" : "Sans forfait"}
+                  {billing.subscription_status && billing.subscription_status !== "active" ? ` · ${billing.subscription_status}` : ""}
+                </span>
+                <span className="text-xs text-slate-400">≈ {billing.spent_usd.toFixed(2)} $ de coût fournisseur ce mois ({billing.spent_credits} crédits)</span>
               </div>
-              <div className="grid sm:grid-cols-3 gap-2">
+              {billing.credits ? (
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-slate-200 p-3">
+                    <div className="flex items-baseline justify-between gap-2"><span className="text-xs uppercase tracking-wide text-slate-400 font-semibold">Crédits du mois</span><span className="font-semibold text-ink">{billing.credits.monthly} <span className="text-xs font-normal text-slate-400">/ {billing.credits.monthly_granted}</span></span></div>
+                    {billing.credits.monthly_granted > 0 && (
+                      <div className="h-2 rounded-full bg-slate-100 overflow-hidden mt-2">
+                        <div className={`h-full ${billing.credits.monthly / billing.credits.monthly_granted < 0.2 ? "bg-rose-500" : "bg-accent"}`} style={{ width: `${Math.min(100, (billing.credits.monthly / Math.max(1, billing.credits.monthly_granted)) * 100)}%` }} />
+                      </div>
+                    )}
+                    {billing.credits.period_end && <div className="text-xs text-slate-400 mt-1">Remis à {billing.credits.monthly_granted} le {new Date(billing.credits.period_end).toLocaleDateString("fr-FR")}</div>}
+                  </div>
+                  <div className="rounded-xl border border-slate-200 p-3">
+                    <div className="flex items-baseline justify-between gap-2"><span className="text-xs uppercase tracking-wide text-slate-400 font-semibold">Crédits achetés</span><span className="font-semibold text-ink">{billing.credits.topup}</span></div>
+                    <div className="text-xs text-slate-400 mt-1">Sans date d'expiration, consommés après les crédits du mois.</div>
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {billing.topups.map((t) => (
+                        <button key={t.code} onClick={() => topup(t.code)} disabled={!billing.stripe_configured || billingBusy} className="text-xs px-2 py-1 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40" title={`${(t.price_chf / t.credits).toFixed(2)} CHF par crédit`}>{t.credits} cr · {t.price_chf} CHF</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : billing.budget_source === "unlimited" ? (
+                <div className="text-sm text-slate-500">Espace interne : aucun plafond de crédits.</div>
+              ) : null}
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {billing.plans.map((p) => (
                   <div key={p.code} className={`rounded-xl border p-3 ${billing.plan?.code === p.code ? "border-accent bg-accent/5" : "border-slate-200"}`}>
-                    <div className="flex items-baseline justify-between gap-2"><span className="font-semibold text-ink">{p.name}</span><span className="text-sm text-slate-600">{p.price_eur} €/mois</span></div>
+                    <div className="flex items-baseline justify-between gap-2"><span className="font-semibold text-ink">{p.name}</span><span className="text-sm text-slate-600">{p.price_chf} CHF/mois</span></div>
+                    <div className="text-sm text-ink mt-1">{p.credits} crédits par mois</div>
                     <div className="text-xs text-slate-500 mt-1">{p.description}</div>
-                    <div className="text-xs text-slate-400 mt-1">Budget IA : {p.budget_usd} $ par mois</div>
+                    <div className="text-xs text-slate-400 mt-1">{p.avatars == null ? "Influenceurs illimités" : `${p.avatars} influenceur${p.avatars > 1 ? "s" : ""}`} · {p.platforms == null ? "tous les réseaux" : `${p.platforms} réseaux`} · support {p.support}</div>
+                    {p.setup && <div className="text-xs text-slate-400 mt-1">{p.setup.required ? "Setup obligatoire" : "Setup optionnel"} : {p.setup.price_chf} CHF une fois — {p.setup.label}</div>}
                     {billing.plan?.code !== p.code && (
-                      <button onClick={() => checkout(p.code)} disabled={!billing.stripe_configured || billingBusy}
-                        title={billing.stripe_configured ? "" : "Paiement indisponible : Stripe n'est pas configuré sur ce serveur"}
-                        className="mt-2 text-xs px-2.5 py-1.5 rounded-lg bg-ink text-white disabled:opacity-40">Choisir</button>
+                      <div className="flex gap-1.5 mt-2">
+                        <button onClick={() => checkout(p.code)} disabled={!billing.stripe_configured || billingBusy}
+                          title={billing.stripe_configured ? "" : "Paiement indisponible : Stripe n'est pas configuré sur ce serveur"}
+                          className="text-xs px-2.5 py-1.5 rounded-lg bg-ink text-white disabled:opacity-40">{p.setup?.required && !billing.setup_paid ? "Choisir (avec setup)" : "Choisir"}</button>
+                        {p.setup && !p.setup.required && !billing.setup_paid && (
+                          <button onClick={() => checkout(p.code, true)} disabled={!billing.stripe_configured || billingBusy} className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40">Avec setup</button>
+                        )}
+                      </div>
                     )}
                   </div>
                 ))}
@@ -323,8 +352,8 @@ export function Settings() {
               </div>
               {isAdmin && (
                 <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100">
-                  <span className="text-xs text-slate-500">Budget manuel de cet espace ($ par mois, vide = règle du forfait)</span>
-                  <input className="w-28 border border-slate-200 rounded-lg px-2 py-1 text-sm" value={budgetInput} onChange={(e) => setBudgetInput(e.target.value)} placeholder="ex. 100" />
+                  <span className="text-xs text-slate-500">Crédits mensuels fixés à la main pour cet espace (vide = règle du forfait)</span>
+                  <input className="w-28 border border-slate-200 rounded-lg px-2 py-1 text-sm" value={budgetInput} onChange={(e) => setBudgetInput(e.target.value)} placeholder="ex. 1000" />
                   <button onClick={saveBudget} disabled={billingBusy} className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">Enregistrer</button>
                 </div>
               )}

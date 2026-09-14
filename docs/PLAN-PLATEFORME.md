@@ -58,7 +58,7 @@ En-têtes HTTP (nosniff, frame deny, referrer, HSTS en prod), limitation de déb
 1. Créer le compte Stripe, poser les clés, enregistrer le webhook, valider les tarifs.
 2. Créer le compte Resend, vérifier le domaine d'envoi.
 3. Publication réelle : Zernio retenu et codé (7 sept.) — compte Zernio, `ZERNIO_API_KEY`, `ZERNIO_WEBHOOK_SECRET`, migration 0019.
-4. Appliquer les migrations 0020 (réservation atomique du budget) et 0021 (kit de lancement) dans Supabase — 0017 à 0019 vérifiées appliquées le 14 sept.
+4. Migrations : toutes appliquées (0001 → 0022) le 14 sept. — désormais appliquées par Claude via le pooler (voir README).
 5. Poser `DEFAULT_MONTHLY_BUDGET_USD=0` en prod le jour de l'ouverture (forfait obligatoire pour les
    nouveaux espaces) — ton espace admin garde un budget manuel illimité (`monthly_budget_usd` vide,
    ou fixé).
@@ -86,8 +86,13 @@ prompts et la procédure téléphone de Jérôme, à intégrer comme aide dans l
 
 Spec « Tarification & Facturation v1.0 » reçue de Jérôme, corrigée sur les coûts réels dans
 **docs/TARIFICATION-CREDITS.md** : 1 crédit = 0,10 $ d'infra, crédits débités au coût réel estimé,
-quotas de packs relevés (400 / 1 200 / 2 000 / 6 000 / 10 000), AppSumo réduit. Chantier B (migration
-0021, portefeuille à deux soldes, Checkout CHF, top-up, features par plan) après validation.
+quotas de packs relevés (400 / 1 200 / 2 000 / 6 000 / 10 000), AppSumo mis de côté. **Codé le 14 sept.
+(migration 0022)** : `domain/pricing.ts` (tarifs versionnés en base, version 1 = le document, plancher ×1,2
+vérifié à chaque enregistrement), `domain/billing.ts` (deux soldes, réservation atomique `reserve_credits`
+mensuel puis top-up, remboursement si rien n'est lancé, ajustement au coût réel, remise à zéro à chaque
+facture Stripe payée ou au mois calendaire), Checkout en CHF avec setup en ligne séparée, top-up en
+paiement unique, garde-fous par forfait (influenceurs, réseaux connectés, pilote automatique), écran
+Paramètres › Abonnement et crédits. Non testé en réel : le passage en caisse Stripe (clé absente).
 
 ## 10. Reste à faire (audit du 7 sept., voir docs/AUDIT-PROD.md)
 
