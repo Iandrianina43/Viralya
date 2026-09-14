@@ -117,9 +117,13 @@ page ouverte (Studio → Génération, Bible → Univers…). « Plus tard » re
 
 ## 12. Demandes de Jérôme du 14 sept. (création, économies de crédits)
 
-1. **Vlog économique** : option « coupes en images animées » (assistant vlog, montage en plans séparés). Les plans
-   de coupe deviennent des images animées au montage : keyframe du décor avec l'influenceur (cache → 0 crédit),
-   sinon l'image du décor, sinon une image générée (≈ 1 crédit). Les plans parlés restent en vidéo.
+1. **Vlog économique** : option « coupes en images animées » (assistant vlog, montage en plans séparés). Chaque plan
+   de coupe devient un photogramme de la même vidéo (`sceneStill` dans `pipeline/hybrid.ts`) : l'influenceur, dans le
+   décor exact, avec la tenue de la vidéo, en train de faire ce que la narration raconte (références : portrait,
+   planche, image du lieu, keyframe des plans parlés, tenue ; ≈ 0,07-0,15 $ ≈ 1 crédit, visage contrôlé). Repli :
+   keyframe du décor (0 $), image du décor, image générée. Les plans parlés restent en vidéo. Vérifié le 14 sept. :
+   « Dernière gorgée, carnet dans la veste, je traverse vers le studio » → image de dos, carnet à la main, rue pavée,
+   Jet d'Eau, 0,074 $.
 2. **Analyse du profil → planning** (`domain/strategy.ts`, migration 0023) : il fait ça, il vend ça, à qui, promesse,
    piliers, réseaux, cadence, mix, thème du mois, arcs. Panneau dans le calendrier, « Proposer le planning »
    pré-remplit et lance le stratège, qui lit aussi l'analyse à chaque génération. Testé sur Alexandre Weber (12 s).

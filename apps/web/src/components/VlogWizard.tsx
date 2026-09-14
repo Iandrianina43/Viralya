@@ -126,7 +126,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
       const total = scenes.reduce((acc, sc) => {
         const speech = sc.texte.trim() ? Math.max(1.5, sc.texte.trim().length / 14) : 0;
         if (sc.mode === "talk") return acc + talkUnit * Math.max(1, Math.ceil(speech + 0.5)) + speech * 0.0025;
-        if (economy && !singleTake) return acc + 0.07 + speech * 0.0025; // image animée (au plus une image Seedream)
+        if (economy && !singleTake) return acc + 0.12 + speech * 0.0025; // image de coupe avec l'influenceur, liée à la narration
         return acc + unit * clamp(Math.max(sc.duration_sec, Math.ceil(speech + 0.5))) + speech * 0.0025;
       }, 0);
       return Math.round(total * 100) / 100;
@@ -462,7 +462,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
                   <input type="checkbox" checked={broll} onChange={(e) => { setBroll(e.target.checked); if (!e.target.checked) setSingleTake(true); }} /> B-roll (inserts photo, plans de coupe)
                 </label>
                 {broll && format === "hybrid" && (
-                  <label className="flex items-center gap-1.5 text-emerald-700" title="Les plans de coupe deviennent des images animées (décor avec l'influenceur, en cache → 0 crédit) au lieu de clips vidéo. Les plans parlés restent en vidéo.">
+                  <label className="flex items-center gap-1.5 text-emerald-700" title="Chaque plan de coupe devient une image animée : l'influenceur dans son décor, même tenue, en train de faire ce que la narration raconte (≈ 1 crédit) au lieu d'un clip vidéo (3 à 8 crédits). Les plans parlés restent en vidéo.">
                     <input type="checkbox" checked={economy} onChange={(e) => { setEconomy(e.target.checked); if (e.target.checked) setSingleTake(false); }} /> Économique : coupes en images animées
                   </label>
                 )}

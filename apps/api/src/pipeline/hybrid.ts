@@ -1,8 +1,8 @@
-import { avatarImageModel, IDENTITY_SELECT, pronouns, resolveOutfit, type AvatarIdentity, type ResolvedOutfit } from "../domain/characterBible";
+import { avatarImageModel, identityBlock, IDENTITY_SELECT, pronouns, resolveOutfit, type AvatarIdentity, type ResolvedOutfit } from "../domain/characterBible";
 import { piapiImageToStorage } from "../providers/piapiImage";
 import { buildBrollPrompt, buildClonePrompt, buildFacelessPrompt, buildSeedance25Prompt, foldText, personWords, type InsertFraming, type VlogScene } from "../domain/director";
 import { ensureKeyframe, findKeyframe, type AvatarKeyframe, type KeyframeFraming } from "../domain/keyframes";
-import { qcVerdict } from "../lib/qc";
+import { faceScores, qcVerdict } from "../lib/qc";
 import { logger } from "../logger";
 import { estimateSpeechSeconds } from "../providers/elevenlabs";
 import {
@@ -62,6 +62,8 @@ export interface InsertState {
 }
 
 export const INSERT_COST_ESTIMATE = 0.07;
+/** Image de coupe d'un vlog économique : l'influenceur en action dans son décor (identité + décor + tenue en références) ≈ 0,12 $. */
+export const SCENE_STILL_ESTIMATE = 0.12;
 export const MUSIC_COST_ESTIMATE = 0.06;
 
 export interface ShotState {
@@ -217,7 +219,7 @@ export function estimateHybridCost(scenes: VlogScene[], settings: HybridSettings
       return Math.round((talk * (opts.kind === "clone" ? 1.5 : 1) + voice + inserts) * 1000) / 1000;
     }
     // Image fixe animée (explicative) : une image Seedream, pas de rendu vidéo.
-    if (sc.visual === "still") return Math.round((INSERT_COST_ESTIMATE + voice) * 1000) / 1000;
+    if (sc.visual === "still") return Math.round(((opts.kind === "explainer" || String(opts.kind ?? "").startsWith("ad") ? INSERT_COST_ESTIMATE : SCENE_STILL_ESTIMATE) + voice) * 1000) / 1000;
     const dur = clampDuration(Math.max(sc.duration_sec, Math.ceil(speech + 0.5)), settings.seedance.taskType);
     const frame = sc.visual === "clip" && opts.kind === "explainer" ? INSERT_COST_ESTIMATE : 0;
     return Math.round((estimateProductionCost(settings.seedance.taskType, settings.seedance.resolution, [dur]).total + voice + frame) * 1000) / 1000;
@@ -333,6 +335,50 @@ async function facelessImage(ctx: ShotContext, shot: ShotState, scene: VlogScene
   return { imageUrl: r.imageUrl, cost: r.cost };
 }
 
+/**
+ * Image de coupe d'un VLOG économique (14 sept., demande de Jérôme : « que les photos ressemblent aux vidéos et
+ * soient liées à ce qui est dit ») : un photogramme de la même vidéo — l'influenceur (portrait + planche), dans le
+ * décor exact (image du lieu), avec la tenue de la vidéo, en train de faire ce que la narration raconte. Le keyframe
+ * des plans parlés (même décor, même tenue) sert de référence de continuité quand il existe. Contrôle du visage
+ * ensuite ; en cas d'échec l'appelant retombe sur le keyframe. ≈ 0,10-0,15 $ selon le nombre de références.
+ */
+async function sceneStill(ctx: ShotContext, shot: ShotState, scene: VlogScene | undefined, loc: LocationRow | undefined): Promise<{ imageUrl: string; cost: number; verdict: string; score: number | null }> {
+  const avatar = ctx.avatar;
+  const p = pronouns(avatar);
+  const sc = scene ?? fallbackScene(shot);
+  const refs: string[] = [...ctx.refs.imageUrls];
+  const identityCount = refs.length;
+  let locIdx = 0, kfIdx = 0, outfitIdx = 0;
+  if (loc?.ref_image_url) { refs.push(loc.ref_image_url); locIdx = refs.length; }
+  if (loc) {
+    const kf = await findKeyframe(avatar.id, { locationId: loc.id, outfitId: ctx.outfit?.id ?? null }, { validatedOnly: true }).catch(() => null);
+    if (kf?.url && !refs.includes(kf.url)) { refs.push(kf.url); kfIdx = refs.length; }
+  }
+  if (ctx.outfit?.ref_url) { refs.push(ctx.outfit.ref_url); outfitIdx = refs.length; }
+  const action = String(sc.action || sc.scene_desc || shot.titre).trim();
+  const narration = foldText(String(shot.texte || sc.texte || "")).slice(0, 220);
+  const prompt = [
+    `Reference image 1 is the face and identity of ${avatar.name}.`,
+    identityCount === 2 ? "Reference image 2 shows the same person (character sheet)." : identityCount > 2 ? `Reference images 2-${identityCount} show the same person (character sheet, other views).` : "",
+    locIdx ? `Reference image ${locIdx} is the EXACT location: reuse its walls, furniture, colors and layout.` : "",
+    kfIdx ? `Reference image ${kfIdx} shows ${avatar.name} already in this location wearing this outfit: match ${p.poss} look, clothes and the setting exactly.` : "",
+    outfitIdx ? `Reference image ${outfitIdx} shows ${p.poss} outfit.` : "",
+    `A candid vertical 9:16 frame taken from the SAME video, a few seconds later: ${avatar.name} ${action}.`,
+    sc.scene_desc ? `Scene: ${sc.scene_desc}.` : "",
+    sc.camera ? `Camera: ${sc.camera}.` : "",
+    sc.lighting ? `Light: ${sc.lighting}.` : "",
+    loc?.description && !locIdx ? `Location: ${loc.description}.` : "",
+    ctx.outfit?.description_en ? `${p.Subj} is wearing ${ctx.outfit.description_en} — do NOT copy the clothes from the identity references.` : "",
+    narration ? `The narration heard over this shot is: "${narration}" — the image shows exactly what it describes, without rendering any text.` : "",
+    `Keep the face, features, hairstyle and skin exactly like the references. ${identityBlock(avatar)}.`,
+    "Photorealistic film frame, natural unretouched skin, slight motion, real camera, cinematic yet candid, no text, no watermark, no logo.",
+  ].filter(Boolean).join(" ");
+  const r = await piapiImageToStorage({ prompt, refs, model: avatarImageModel(avatar), aspect: "9:16", quality: "1K" }, `${avatar.id}/${ctx.item.id}/still-${shot.idx}-${Date.now()}`);
+  const [qc] = avatar.ref_image_url ? await faceScores(avatar.ref_image_url, [r.imageUrl]).catch(() => []) : [];
+  shot.prompt = prompt;
+  return { imageUrl: r.imageUrl, cost: r.cost, verdict: qc?.verdict ?? "unknown", score: qc?.score ?? null };
+}
+
 async function resolveInserts(ctx: ShotContext, shot: ShotState, loc: LocationRow | undefined, say?: (msg: string) => void): Promise<void> {
   // Inserts photo désactivés par défaut (demande du 6 sept. : « désactive le B-roll ») : aucune image
   // générée ni facturée tant que payload.inserts !== true.
@@ -398,18 +444,35 @@ export async function submitShot(ctx: ShotContext, shot: ShotState, say?: (msg: 
 
   // IMAGE FIXE animée au montage (Ken Burns) sous la voix ElevenLabs, sans rendu vidéo.
   //  - explicative sans visage : image Seedream ≈ 0,07 $ ;
-  //  - vlog en mode économique (14 sept., demande de Jérôme) : le keyframe du décor avec l'influenceur (généré une
-  //    fois par décor + tenue, puis en cache → 0 $), sinon l'image du décor seule (0 $), sinon une image générée.
+  //  - vlog en mode économique (14 sept., demande de Jérôme) : un photogramme de la même vidéo, l'influenceur en
+  //    train de faire ce que la narration raconte (sceneStill, ≈ 0,12 $, visage contrôlé) ; si le visage ne passe
+  //    pas : le keyframe du décor (cache → 0 $), sinon l'image du décor seule (0 $), sinon une image générée.
   if (shot.role === "still") {
     let imageUrl: string | null = null;
     let cost = 0;
-    const loc = ctx.item.payload.faceless === true || !shot.location_key ? undefined : ctx.locations.get(shot.location_key);
-    if (loc) {
+    const isVlog = ctx.item.payload.faceless !== true;
+    const loc = !isVlog || !shot.location_key ? undefined : ctx.locations.get(shot.location_key);
+    if (isVlog) {
+      try {
+        const r = await sceneStill(ctx, shot, scene, loc);
+        if (r.verdict === "fail") {
+          say?.(`🖼️ ${shot.titre} : image de coupe rejetée (visage ${r.score?.toFixed(2) ?? "?"}) — repli sur le keyframe du décor`);
+          cost = r.cost; // payée quand même
+        } else {
+          imageUrl = r.imageUrl;
+          cost = r.cost;
+          say?.(`🖼️ ${shot.titre} : image de coupe générée (${r.cost.toFixed(3)} $${r.score != null ? `, visage ${r.score.toFixed(2)}` : ""}) — animée au montage`);
+        }
+      } catch (err) {
+        logger.warn("scene_still_failed", { itemId: ctx.item.id, shot: shot.idx, err: String((err as Error)?.message ?? err) });
+      }
+    }
+    if (!imageUrl && loc) {
       try {
         const r = await ensureKeyframe(ctx.avatar, { locationId: loc.id, outfitId: ctx.outfit?.id ?? null });
         if (r.keyframe.validated || qcVerdict(r.keyframe.face_score) === "pass") {
           imageUrl = r.keyframe.url;
-          cost = r.cached ? 0 : r.cost;
+          cost += r.cached ? 0 : r.cost;
           shot.keyframe_id = r.keyframe.id;
           shot.keyframe_url = r.keyframe.url;
         }
@@ -421,7 +484,10 @@ export async function submitShot(ctx: ShotContext, shot: ShotState, say?: (msg: 
     if (!imageUrl) {
       const r = await facelessImage(ctx, shot, scene);
       imageUrl = r.imageUrl;
-      cost = r.cost;
+      cost += r.cost;
+      say?.(`🖼️ ${shot.titre} : image générée (${r.cost.toFixed(3)} $) — animée au montage`);
+    } else if (!shot.prompt || shot.keyframe_url === imageUrl) {
+      say?.(`🖼️ ${shot.titre} : image du décor réutilisée (0 $) — animée au montage`);
     }
     shot.image_url = imageUrl;
     shot.provider = undefined;
@@ -430,7 +496,6 @@ export async function submitShot(ctx: ShotContext, shot: ShotState, say?: (msg: 
     shot.phase = "done";
     shot.error = undefined;
     shot.cost_usd = Math.round(cost * 1000) / 1000;
-    say?.(`🖼️ ${shot.titre} : image ${cost > 0 ? `générée (${cost.toFixed(3)} $)` : "réutilisée (0 $)"} — animée au montage`);
     return;
   }
 
