@@ -54,10 +54,10 @@ export function Avatars() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-ink">Avatars</h1>
+          <h1 className="text-2xl font-bold text-ink">Influenceurs</h1>
           <p className="text-sm text-slate-500 mt-0.5">Tes influenceurs IA — crée, édite, génère leur contenu.</p>
         </div>
-        <Link to="/avatars/create" className="btn-primary flex items-center gap-2"><Sparkles className="w-4 h-4" /> Créer un avatar</Link>
+        <Link to="/avatars/create" className="btn-primary flex items-center gap-2"><Sparkles className="w-4 h-4" /> Créer un influenceur</Link>
       </div>
 
       {msg && <div className="text-green-700 bg-green-50 border border-green-200 rounded-xl p-3 mb-4 text-sm">{msg}</div>}
@@ -116,7 +116,7 @@ export function Avatars() {
                   <Link to={`/avatars/${a.id}/bible`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center" title="Character Bible : références, garde-robe, photos">Bible</Link>
                   <Link to={`/avatars/${a.id}/journal`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center">Journal</Link>
                   <Link to={`/avatars/${a.id}`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center flex items-center justify-center gap-1" title="Éditer"><Pencil className="w-3.5 h-3.5" /></Link>
-                  <button onClick={() => setConfirmAvatar(a)} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 text-center flex items-center justify-center" title="Supprimer l'avatar"><Trash2 className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => setConfirmAvatar(a)} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 text-center flex items-center justify-center" title="Supprimer l'influenceur"><Trash2 className="w-3.5 h-3.5" /></button>
                 </div>
               </div>
             </div>
@@ -127,9 +127,9 @@ export function Avatars() {
         {!loading && avatars.length === 0 && drafts.length === 0 && !err && (
           <div className="card p-10 text-center col-span-full">
             <div className="text-4xl mb-3">✨</div>
-            <div className="font-semibold text-ink">Aucun avatar pour l'instant</div>
+            <div className="font-semibold text-ink">Aucun influenceur pour l'instant</div>
             <p className="text-sm text-slate-500 mt-1 mb-4">Crée ton premier influenceur IA en discutant avec l'assistant.</p>
-            <Link to="/avatars/create" className="btn-primary inline-flex items-center gap-2"><Sparkles className="w-4 h-4" /> Créer un avatar</Link>
+            <Link to="/avatars/create" className="btn-primary inline-flex items-center gap-2"><Sparkles className="w-4 h-4" /> Créer un influenceur</Link>
           </div>
         )}
       </div>
@@ -148,8 +148,8 @@ export function Avatars() {
       />
       <ConfirmModal
         open={!!confirmAvatar}
-        title={`Supprimer ${confirmAvatar?.name ?? "cet avatar"} ?`}
-        message="L'avatar, sa mémoire et tous ses contenus générés seront définitivement supprimés. Cette action est irréversible."
+        title={`Supprimer ${confirmAvatar?.name ?? "cet influenceur"} ?`}
+        message="L'influenceur, sa mémoire et tous ses contenus générés seront définitivement supprimés. Cette action est irréversible."
         confirmLabel="Supprimer définitivement"
         danger
         onConfirm={doDeleteAvatar}

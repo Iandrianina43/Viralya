@@ -81,8 +81,8 @@ export function AvatarEditor() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-ink">{editing ? "Éditer l'avatar" : "Nouvel avatar"}</h1>
-        <button onClick={() => nav("/avatars")} className="text-sm text-slate-500 hover:underline">← Avatars</button>
+        <h1 className="text-2xl font-bold text-ink">{editing ? "Éditer l'influenceur" : "Nouvel influenceur"}</h1>
+        <button onClick={() => nav("/avatars")} className="text-sm text-slate-500 hover:underline">← Influenceurs</button>
       </div>
       {err && <div className="text-red-600 mb-4 text-sm">Erreur : {err}</div>}
 
@@ -143,13 +143,13 @@ export function AvatarEditor() {
             </div>
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={form.is_ai_disclosed ?? true} onChange={(e) => set("is_ai_disclosed", e.target.checked)} className="accent-[#f0562b]" />
-              <span className="text-sm text-slate-600">Avatar ouvertement déclaré IA (conformité)</span>
+              <span className="text-sm text-slate-600">Influenceur ouvertement déclaré IA (conformité)</span>
             </label>
           </Section>
 
           <Section title="Voix & vidéo">
             {/* LA voix de l'avatar (ElevenLabs) — celle choisie à la création, utilisée dans les vlogs. */}
-            <label className="block"><span className="text-sm text-slate-600">Voix de l'avatar (ElevenLabs — utilisée dans les vlogs)</span>
+            <label className="block"><span className="text-sm text-slate-600">Voix de l'influenceur (ElevenLabs — utilisée dans les vlogs)</span>
               <div className="flex gap-2">
                 {elevenVoices.length > 0 ? (
                   <select

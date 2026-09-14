@@ -485,7 +485,7 @@ export function Studio() {
               <Link to={`/avatars/${id}/journal`} className="text-xs text-accent hover:underline">tout voir</Link>
             </div>
             {memory.length === 0 ? (
-              <div className="text-xs text-slate-400">Vide. L'avatar l'enrichit à chaque publication.</div>
+              <div className="text-xs text-slate-400">Vide. L'influenceur l'enrichit à chaque publication.</div>
             ) : (
               <div className="space-y-2">
                 {memory.slice(0, 4).map((m) => (

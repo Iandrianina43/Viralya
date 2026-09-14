@@ -653,7 +653,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-medium text-ink">Hybride <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 ml-1">recommandé</span></span>
                 </div>
-                <div className="text-[11px] text-slate-400">Voix française ElevenLabs v3, avatar parlant en lip-sync, b-roll Seedance muet, sous-titres. Chaque plan se régénère seul.</div>
+                <div className="text-[11px] text-slate-400">Voix française ElevenLabs v3, influenceur parlant en lip-sync, b-roll Seedance muet, sous-titres. Chaque plan se régénère seul.</div>
               </button>
               <button onClick={() => setFormat("seedance")}
                 className={`text-left rounded-lg border p-2.5 transition ${format === "seedance" ? "border-accent bg-accent/5" : "border-slate-200 hover:border-accent/40"}`}>
@@ -663,7 +663,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
             </div>
             {format === "hybrid" && talkProviders.length > 0 && (
               <div className="flex items-center gap-1.5 mt-3 flex-wrap">
-                <span className="text-xs text-slate-400 mr-1">Avatar parlant</span>
+                <span className="text-xs text-slate-400 mr-1">Prise de parole</span>
                 {talkProviders.map((p) => (
                   <button key={p.id} onClick={() => setTalkProvider(p.id)} title={p.hint}
                     className={`text-xs px-2.5 py-1.5 rounded-lg border ${talkProvider === p.id ? "border-accent bg-accent text-white" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}>

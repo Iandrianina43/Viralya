@@ -31,21 +31,24 @@ function resolveModel(override?: string): PiapiImageModel {
   return DEFAULT_IMAGE_MODEL;
 }
 
-/** Texte → image (sans référence). */
+/**
+ * Texte → image (sans référence). `costUsd` = prix facturé par le fournisseur (grille PiAPI du modèle utilisé) ;
+ * `null` quand il n'est pas connu (OpenAI, image de remplacement) — l'appelant garde alors son estimation.
+ */
 export async function generateImage(
   prompt: string,
   storagePathBase: string,
   size: ImageSize = "1024x1024",
   modelOverride?: string,
-): Promise<{ imageUrl: string }> {
+): Promise<{ imageUrl: string; costUsd: number | null }> {
   if (config.IMAGE_PROVIDER === "piapi" && config.PIAPI_API_KEY) {
-    const { imageUrl } = await piapiImageToStorage({ prompt, aspect: SIZE_TO_ASPECT[size], model: resolveModel(modelOverride) }, storagePathBase);
-    return { imageUrl };
+    const { imageUrl, cost } = await piapiImageToStorage({ prompt, aspect: SIZE_TO_ASPECT[size], model: resolveModel(modelOverride) }, storagePathBase);
+    return { imageUrl, costUsd: cost };
   }
-  if (config.IMAGE_PROVIDER === "openai" && config.OPENAI_API_KEY) return openaiGenerate(prompt, storagePathBase, size, modelOverride);
+  if (config.IMAGE_PROVIDER === "openai" && config.OPENAI_API_KEY) return { ...(await openaiGenerate(prompt, storagePathBase, size, modelOverride)), costUsd: null };
   if (config.NODE_ENV === "production") throw new Error("Aucun fournisseur d'images configuré : génération refusée.");
   logger.warn("image_stub_used");
-  return { imageUrl: STUB_URL };
+  return { imageUrl: STUB_URL, costUsd: 0 };
 }
 
 /**

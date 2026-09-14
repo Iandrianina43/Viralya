@@ -1,7 +1,7 @@
 // L'API est servie sous /api (le front occupe les mêmes chemins en production).
 // Chaque appel porte la session (Bearer) et l'organisation active (x-org-id).
 import { beginRequest, endRequest } from "./lib/loading";
-import { authHeaders, getRefreshToken, setRefreshToken, setToken, signalUnauthorized } from "./lib/authToken";
+import { authHeaders, signalUnauthorized, takeLegacyRefreshToken } from "./lib/authToken";
 
 // En production, le front et l'API sont servis par Express sur le même domaine.
 // Une URL relative évite d'intégrer localhost dans le bundle lorsque le fichier
@@ -270,11 +270,11 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   beginRequest();
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, { ...init, headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) } });
+    res = await fetch(`${API_BASE}${path}`, { ...init, credentials: "include", headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) } });
   } finally {
     endRequest();
   }
-  // Jeton expiré (1 h) : on le renouvelle une fois avec le refresh token, puis on rejoue l'appel.
+  // Jeton expiré (1 h) : on le renouvelle une fois (cookie de renouvellement), puis on rejoue l'appel.
   if (res.status === 401 && !path.startsWith("/auth/")) {
     const retried = (init?.headers as Record<string, string> | undefined)?.["x-session-retry"] === "1";
     if (!retried && (await refreshSession())) return req<T>(path, { ...init, headers: { ...(init?.headers as Record<string, string> | undefined), "x-session-retry": "1" } });
@@ -309,18 +309,16 @@ async function readSse(res: Response, onEvent: (evt: Record<string, any>) => voi
 }
 
 let refreshing: Promise<boolean> | null = null;
-/** Renouvelle la session avec le refresh token (un seul renouvellement à la fois). */
+/**
+ * Renouvelle la session (un seul renouvellement à la fois). Le jeton de renouvellement est dans un cookie
+ * httpOnly ; une session antérieure aux cookies (jeton encore en localStorage) est migrée au passage.
+ */
 async function refreshSession(): Promise<boolean> {
-  const rt = getRefreshToken();
-  if (!rt) return false;
   refreshing ??= (async () => {
     try {
-      const res = await fetch(`${API_BASE}/auth/refresh`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ refresh_token: rt }) });
-      if (!res.ok) return false;
-      const s = (await res.json()) as SessionResult;
-      setToken(s.token);
-      setRefreshToken(s.refresh_token ?? null);
-      return true;
+      const legacy = takeLegacyRefreshToken();
+      const res = await fetch(`${API_BASE}/auth/refresh`, { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify(legacy ? { refresh_token: legacy } : {}) });
+      return res.ok;
     } catch { return false; } finally { refreshing = null; }
   })();
   return refreshing;
@@ -328,7 +326,7 @@ async function refreshSession(): Promise<boolean> {
 
 /** Envoi d'un fichier en corps brut (vidéo source d'un clone, photo produit). */
 async function rawUpload<T>(path: string, file: File, contentType: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "content-type": contentType, ...authHeaders() }, body: file });
+  const res = await fetch(`${API_BASE}${path}`, { method: "POST", credentials: "include", headers: { "content-type": contentType, ...authHeaders() }, body: file });
   const body = (await res.json().catch(() => null)) as { error?: string; message?: string } | null;
   if (!res.ok) throw new Error(body?.error ?? body?.message ?? `Envoi impossible (HTTP ${res.status})`);
   return body as T;
@@ -337,6 +335,7 @@ async function rawUpload<T>(path: string, file: File, contentType: string): Prom
 function post(path: string, body: unknown): Promise<Response> {
   return fetch(`${API_BASE}${path}`, {
     method: "POST",
+    credentials: "include",
     headers: { "content-type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   });
@@ -344,7 +343,8 @@ function post(path: string, body: unknown): Promise<Response> {
 
 // ── Comptes & session ────────────────────────────────────────
 export interface AuthUser { id: string; email: string; name: string; role: "admin" | "user" }
-export interface SessionResult { token: string; refresh_token?: string | null; expires_at: number | null; user: AuthUser }
+/** Réponse de login/signup : la session elle-même est posée en cookies httpOnly par l'API. */
+export interface SessionResult { expires_at: number | null; user: AuthUser }
 export interface PublicConfig { signup_open: boolean; email_configured: boolean; legal_editor: string | null }
 export interface OrgInvite { id: string; email: string; role: string; expires_at: string; created_at: string }
 export interface ManagedUser { id: string; email: string; name: string; role: "admin" | "user"; created_at: string; last_sign_in_at: string | null; banned: boolean }
@@ -361,7 +361,7 @@ export const api = {
   me: () => req<{ user: AuthUser; orgs: Org[] }>("/auth/me"),
   updateProfile: (name: string) => req<{ ok: boolean; user: AuthUser }>("/auth/profile", { method: "PUT", body: JSON.stringify({ name }) }),
   changePassword: (current_password: string, new_password: string) => req<{ ok: boolean }>("/auth/change-password", { method: "POST", body: JSON.stringify({ current_password, new_password }) }),
-  listUsers: () => req<{ users: ManagedUser[]; signup_open: boolean }>("/auth/admin/users"),
+  listUsers: (q = "", limit = 200) => req<{ users: ManagedUser[]; total: number; matched: number; signup_open: boolean }>(`/auth/admin/users?q=${encodeURIComponent(q)}&limit=${limit}`),
   updateUser: (id: string, patch: { role?: "admin" | "user"; banned?: boolean }) => req<{ ok: boolean }>(`/auth/admin/users/${id}`, { method: "PUT", body: JSON.stringify(patch) }),
   deleteUser: (id: string) => req<void>(`/auth/admin/users/${id}`, { method: "DELETE" }),
 

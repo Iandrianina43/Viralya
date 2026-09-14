@@ -65,7 +65,7 @@ export async function loadAvatarRefs(avatarId: string): Promise<AvatarRefs> {
     .select("ref_image_url, character_sheet_url, voice_sample_urls, niche, city")
     .eq("id", avatarId)
     .single();
-  if (!avatar?.ref_image_url) throw new Error("L'avatar n'a pas de portrait — génère son portrait d'abord.");
+  if (!avatar?.ref_image_url) throw new Error("L'influenceur n'a pas de portrait — génère-le d'abord.");
   const sheet = avatar.character_sheet_url as string | null;
   const samples = (Array.isArray(avatar.voice_sample_urls) ? avatar.voice_sample_urls : []).filter(Boolean) as string[];
   return {

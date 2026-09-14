@@ -33,7 +33,7 @@ export async function planDay(job: JobRow): Promise<void> {
   }
 
   const { data: avatar, error } = await supabase.from("avatars").select("id, status").eq("id", avatarId).single();
-  if (error || !avatar) throw new Error(`plan_day: avatar ${avatarId} introuvable`);
+  if (error || !avatar) throw new Error(`plan_day: influenceur ${avatarId} introuvable`);
   if (avatar.status !== "active") {
     logger.info("plan_day_skip_inactive", { avatarId });
     return;

@@ -13,7 +13,11 @@ export async function generateImageJob(job: JobRow): Promise<void> {
     `Style moderne, épuré, cohérent avec un influenceur entrepreneuriat. ${caption}`.slice(0, 900);
 
   const existing = Array.isArray(item.assets.image_urls) ? (item.assets.image_urls as string[]) : [];
-  const { imageUrl } = await generateImage(prompt, `${item.avatar_id}/${item.id}/image-${existing.length}`);
-  await mergeAssets(id, { image_urls: [...existing, imageUrl] });
+  const { imageUrl, costUsd } = await generateImage(prompt, `${item.avatar_id}/${item.id}/image-${existing.length}`);
+  // Coût réel (audit P2, 14 sept. 2026) : ce que le fournisseur facture s'accumule dans les assets ; `assemble`
+  // le passe au registre des dépenses (settleUsage) à la place de l'estimation fixe du calendrier. Sans prix
+  // connu (OpenAI), on garde l'estimation d'une image (0,05 $, ordre de grandeur des modèles 1K).
+  const spent = Number(item.assets.estimated_cost_usd ?? 0) + (costUsd ?? 0.05);
+  await mergeAssets(id, { image_urls: [...existing, imageUrl], estimated_cost_usd: Math.round(spent * 1000) / 1000, ...(costUsd == null ? { cost_estimated: true } : {}) });
   await advance(job);
 }

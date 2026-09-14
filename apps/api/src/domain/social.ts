@@ -104,7 +104,7 @@ export async function ensureProfile(avatarId: string, network: SocialNetwork): P
   const { data: existing } = await supabase.from("social_profiles").select("*").eq("avatar_id", avatarId).eq("network", network).maybeSingle();
   if (existing) return existing as SocialProfile;
   const { data: avatar } = await supabase.from("avatars").select("id, name, niche, city, system_prompt").eq("id", avatarId).single();
-  if (!avatar) throw new Error("avatar introuvable");
+  if (!avatar) throw new Error("influenceur introuvable");
   const r = rng(seedFrom(`${avatarId}:${network}`));
   const handle = `${slug(String(avatar.name))}${network === "tiktok" ? ".off" : ""}` || `viralya${Math.floor(r() * 9000 + 1000)}`;
   let bio = `${avatar.niche ?? "Créatrice de contenu"} · ${avatar.city ?? ""}`.trim();

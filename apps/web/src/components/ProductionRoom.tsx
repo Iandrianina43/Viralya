@@ -106,7 +106,7 @@ export function ProductionRoom({
             ? hybrid
               ? shots.some((s) => s.phase === "voice") || !shots.length
                 ? "Voix ElevenLabs en cours…"
-                : "Plans en rendu (avatar parlant, b-roll)…"
+                : "Plans en rendu (prise de parole, b-roll)…"
               : "Tournage plan-séquence (les segments s'enchaînent)…"
             : stepLabel || "Préparation…";
 

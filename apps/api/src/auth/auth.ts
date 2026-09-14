@@ -1,5 +1,5 @@
-import { createClient } from "@supabase/supabase-js";
-import type { RequestHandler } from "express";
+import { createClient, type User } from "@supabase/supabase-js";
+import type { Request, RequestHandler, Response } from "express";
 import { config } from "../config";
 import { logger } from "../logger";
 import { supabase } from "../supabase";
@@ -7,7 +7,8 @@ import { supabase } from "../supabase";
 // ─────────────────────────────────────────────────────────────
 // Authentification — Supabase Auth (email + mot de passe).
 //  - login/signup côté serveur (le front ne parle jamais à Supabase directement)
-//  - session = access_token (Bearer) vérifié à chaque requête (cache 5 min)
+//  - session = access_token vérifié à chaque requête (cache 5 min), porté par un cookie httpOnly
+//    (14 sept. 2026, audit P2) ou, pour les scripts, par l'en-tête Authorization: Bearer
 //  - rôles dans user_metadata.role : "admin" | "user"
 // ─────────────────────────────────────────────────────────────
 
@@ -71,11 +72,76 @@ export function invalidateUserTokens(userId: string): void {
   for (const [k, v] of tokenCache) if (v.user.id === userId) tokenCache.delete(k);
 }
 
-export const authRequired: RequestHandler = async (req, res, next) => {
+// ── Cookies de session (14 sept. 2026) ───────────────────────
+// Le jeton d'accès et le jeton de renouvellement ne sont plus lisibles par le JavaScript de la page
+// (XSS ≠ vol de session). Deux cookies httpOnly, SameSite=Lax (les navigations de retour Stripe/OAuth
+// les portent, pas les requêtes lancées depuis un autre site), Secure dès que le site est en https.
+export const SESSION_COOKIE = "viralya_session";
+export const REFRESH_COOKIE = "viralya_refresh";
+const COOKIE_DAYS = 30;
+const secureCookies = (): boolean => config.WEB_BASE_URL.startsWith("https://") || config.NODE_ENV === "production";
+
+export function parseCookies(req: Request): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const part of String(req.headers.cookie ?? "").split(";")) {
+    const i = part.indexOf("=");
+    if (i < 0) continue;
+    const k = part.slice(0, i).trim();
+    if (k) out[k] = decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return out;
+}
+
+function cookieLine(name: string, value: string, path: string, maxAgeSec: number): string {
+  return `${name}=${encodeURIComponent(value)}; Path=${path}; Max-Age=${maxAgeSec}; HttpOnly; SameSite=Lax${secureCookies() ? "; Secure" : ""}`;
+}
+
+/** Pose (ou remplace) les cookies de session après login / signup / refresh. */
+export function setSessionCookies(res: Response, session: { access_token: string; refresh_token?: string | null }): void {
+  const lines = [cookieLine(SESSION_COOKIE, session.access_token, "/api", COOKIE_DAYS * 86_400)];
+  if (session.refresh_token) lines.push(cookieLine(REFRESH_COOKIE, session.refresh_token, "/api/auth", COOKIE_DAYS * 86_400));
+  res.setHeader("Set-Cookie", lines);
+}
+
+export function clearSessionCookies(res: Response): void {
+  res.setHeader("Set-Cookie", [cookieLine(SESSION_COOKIE, "", "/api", 0), cookieLine(REFRESH_COOKIE, "", "/api/auth", 0)]);
+}
+
+/** Jeton d'accès de la requête : en-tête Bearer (scripts, tests) sinon cookie httpOnly (navigateur). */
+export function tokenOf(req: Request): { token: string; source: "header" | "cookie" | null } {
   const header = req.headers.authorization ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  if (header.startsWith("Bearer ") && header.length > 7) return { token: header.slice(7), source: "header" };
+  const c = parseCookies(req)[SESSION_COOKIE];
+  return c ? { token: c, source: "cookie" } : { token: "", source: null };
+}
+
+/** Jeton de renouvellement : cookie dédié, sinon corps JSON (anciennes sessions stockées dans le navigateur). */
+export function refreshTokenOf(req: Request): string {
+  return parseCookies(req)[REFRESH_COOKIE] || String(req.body?.refresh_token ?? "");
+}
+
+const originOf = (u: string): string | null => { try { return new URL(u).origin; } catch { return null; } };
+/**
+ * Garde CSRF pour les sessions portées par cookie : une requête qui modifie quelque chose doit venir de
+ * notre propre origine (en-tête Origin, sinon Referer). SameSite=Lax protège déjà les navigateurs récents ;
+ * ceci couvre les autres. Les appels avec Bearer (scripts) ne sont pas concernés.
+ */
+function sameOrigin(req: Request): boolean {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return true;
+  const src = originOf(String(req.headers.origin ?? "")) ?? originOf(String(req.headers.referer ?? ""));
+  if (!src) return true; // ni Origin ni Referer : clients non-navigateur (curl) — le cookie n'y est jamais joint automatiquement
+  const allowed = new Set([originOf(config.WEB_BASE_URL), `${req.protocol}://${req.get("host")}`]);
+  return allowed.has(src);
+}
+
+export const authRequired: RequestHandler = async (req, res, next) => {
+  const { token, source } = tokenOf(req);
   if (!token) {
     res.status(401).json({ error: "auth_required" });
+    return;
+  }
+  if (source === "cookie" && !sameOrigin(req)) {
+    res.status(403).json({ error: "origine refusée" });
     return;
   }
   const user = await userFromToken(token);
@@ -113,6 +179,50 @@ export function rateLimit(maxPerWindow: number, windowMs: number, scope: "path" 
   };
 }
 
+// ── Annuaire des comptes (14 sept. 2026, audit P2) ───────────
+// Supabase Auth ne renvoie qu'une page à la fois (1000 max) : ces aides paginent, au lieu de tronquer
+// silencieusement au-delà du millième compte.
+const PAGE = 1000;
+const MAX_PAGES = 50; // 50 000 comptes : bien au-delà du besoin, borne de sécurité
+
+export async function listAllUsers(opts: { max?: number } = {}): Promise<User[]> {
+  const max = opts.max ?? PAGE * MAX_PAGES;
+  const all: User[] = [];
+  for (let page = 1; page <= MAX_PAGES && all.length < max; page++) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: PAGE });
+    if (error) throw new Error(`listUsers: ${error.message}`);
+    all.push(...data.users);
+    if (data.users.length < PAGE) break;
+  }
+  return all.slice(0, max);
+}
+
+/** Compte dont l'adresse correspond (insensible à la casse), quel que soit le nombre de comptes. */
+export async function findUserByEmail(email: string): Promise<User | null> {
+  const wanted = email.trim().toLowerCase();
+  if (!wanted) return null;
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: PAGE });
+    if (error) throw new Error(`listUsers: ${error.message}`);
+    const hit = data.users.find((u) => (u.email ?? "").toLowerCase() === wanted);
+    if (hit) return hit;
+    if (data.users.length < PAGE) break;
+  }
+  return null;
+}
+
+/** Comptes par identifiant (membres d'un espace : quelques lectures directes, pas un balayage). */
+export async function usersByIds(ids: Iterable<string>): Promise<Map<string, User>> {
+  const out = new Map<string, User>();
+  const list = [...new Set(ids)];
+  for (let i = 0; i < list.length; i += 20) {
+    const chunk = list.slice(i, i + 20);
+    const rows = await Promise.all(chunk.map(async (id) => (await supabase.auth.admin.getUserById(id)).data.user ?? null));
+    for (const u of rows) if (u) out.set(u.id, u);
+  }
+  return out;
+}
+
 // ── Comptage / bootstrap ─────────────────────────────────────
 export async function countUsers(): Promise<number> {
   const { data, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1 });
@@ -126,8 +236,7 @@ export async function ensureBootstrapAdmin(): Promise<void> {
   const password = config.ADMIN_PASSWORD;
   if (!email || !password) return;
   try {
-    const { data } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 });
-    if (data.users.some((u) => (u.email ?? "").toLowerCase() === email.toLowerCase())) return;
+    if (await findUserByEmail(email)) return;
     const { error } = await supabase.auth.admin.createUser({
       email,
       password,

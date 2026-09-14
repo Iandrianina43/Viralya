@@ -102,6 +102,16 @@ comment, où, coût) à partir de `lib/journey.ts` (huit étapes cochées d'apr�
 page ouverte (Studio → Génération, Bible → Univers…). « Plus tard » replie, « Ne plus afficher » masque
 (navigateur). La page /bienvenue reste accessible par lien mais n'est plus imposée ni dans le menu.
 
-## 11. Reste à faire (audit du 7 sept., voir docs/AUDIT-PROD.md)
+## 11. Sécurité et finitions P2 (14 sept.)
 
-Voir l'audit complet : UX/UI, gestion des organisations, robustesse, données, coûts.
+- Session en cookies httpOnly (`viralya_session`, `viralya_refresh`), garde d'origine sur les écritures, CSP.
+  Les anciennes sessions stockées dans le navigateur sont migrées au premier appel (`/auth/refresh` accepte
+  encore le jeton dans le corps une fois, puis le front l'efface).
+- Coût réel des carrousels et stories : `generateImage` renvoie le prix PiAPI, `assemble` le passe au registre.
+- Annuaire : `findUserByEmail`, `listAllUsers`, `usersByIds` paginent Supabase ; recherche dans Réglages.
+- Vocabulaire « influenceur » dans tous les textes visibles.
+
+## 12. Reste à faire (audit du 7 sept., voir docs/AUDIT-PROD.md)
+
+Voir l'audit complet : UX/UI, gestion des organisations, robustesse, données, coûts. Bloqué par des clés :
+Stripe réel, Zernio réel, SMTP.

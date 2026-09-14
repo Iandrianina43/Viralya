@@ -91,15 +91,14 @@ corrigé le jour même, ce qui reste à faire par priorité, et ce qui dépend d
 ### P2 — important
 - Fusion des relances : un rendu qui dépasse le délai de suivi (25 min) est marqué en échec alors
   que les clips peuvent encore arriver → re-vérifier les tâches avant d'échouer.
-- ~~Coûts réels pour les photos~~ (fait le 14 sept. : chaque image payée remplace l'estimation) ; carrousels et stories restent à l'estimation fixe.
+- ~~Coûts réels pour les photos, carrousels et stories~~ (fait le 14 sept. : chaque image payée remplace l'estimation ; sans prix connu du fournisseur, 0,05 $ par image marqué `cost_estimated`).
 - ~~Barre d'onglets par influenceur, entrée « Calendrier » dans le menu (page `/calendar` sur `GET /calendar/upcoming`), reste de crédits dans la barre du haut et estimations en crédits avant de lancer~~ — fait le 14 sept.
 - ~~Accessibilité des modales (rôle dialog, Échap, focus, retour du focus)~~ — fait le 14 sept. États de chargement : faits le 7 sept.
 - ~~Grille du calendrier et panneau latéral sur mobile~~ (fait le 14 sept. : liste par jour sous 640 px, panneau en feuille du bas) ; zone d'actions des cartes influenceur.
 - Journalisation des requêtes (identifiant de requête, coût par job) ; `max_attempts` par type de job.
-- `Content-Security-Policy` ; jeton en cookie httpOnly plutôt qu'en localStorage.
-- Recherche d'utilisateur par e-mail sans parcourir tout l'annuaire (au-delà de 1 000 comptes).
-- Vocabulaire unifié (« influenceur » partout, plus « avatar ») et noms de fournisseurs hors des
-  écrans clients.
+- ~~`Content-Security-Policy` ; jeton en cookie httpOnly plutôt qu'en localStorage~~ — fait le 14 sept. (cookies `viralya_session` / `viralya_refresh`, garde d'origine sur les écritures, en-tête Bearer conservé pour les scripts ; CSP dans `routes/index.ts`).
+- ~~Recherche d'utilisateur par e-mail au-delà de 1 000 comptes~~ — fait le 14 sept. (pagination Supabase dans `auth/auth.ts` : `findUserByEmail`, `listAllUsers`, `usersByIds` ; recherche `?q=` dans Réglages).
+- ~~Vocabulaire unifié (« influenceur » partout, plus « avatar »)~~ — fait le 14 sept. dans les textes visibles (pages, messages d'erreur, journal de production). Reste : noms de fournisseurs hors des écrans clients (ElevenLabs, Seedance, Kling restent affichés dans le Studio).
 
 ### P3 — amélioration
 - Fuseau horaire en liste déroulante ; pause des rafraîchissements quand l'onglet est caché ;

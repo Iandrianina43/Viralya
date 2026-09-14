@@ -131,7 +131,7 @@ export async function pollShotsJob(job: JobRow): Promise<void> {
     try {
       ctx ??= await loadShotContext(item);
       await submitShot(ctx, shot, say);
-      say(`🎥 ${shot.titre} : ${shot.role === "talk" ? `avatar parlant (${shot.provider})` : "b-roll Seedance"} relancé`);
+      say(`🎥 ${shot.titre} : ${shot.role === "talk" ? `prise de parole (${shot.provider})` : "b-roll Seedance"} relancé`);
     } catch (err) {
       const msg = String((err as Error)?.message ?? err);
       if (isRateLimited(err)) {

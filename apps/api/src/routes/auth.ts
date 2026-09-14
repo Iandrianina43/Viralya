@@ -1,13 +1,18 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import {
   adminRequired,
   authConfigured,
   authRequired,
+  clearSessionCookies,
   countUsers,
   invalidateToken,
   invalidateUserTokens,
+  listAllUsers,
   rateLimit,
+  refreshTokenOf,
+  setSessionCookies,
   supabaseAuth,
+  tokenOf,
   userFromToken,
 } from "../auth/auth";
 import { acceptInvites, ensurePersonalOrg, invalidateOrgCache, listUserOrgs } from "../auth/org";
@@ -46,10 +51,10 @@ export const authRouter = Router();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function sessionPayload(session: { access_token: string; refresh_token?: string; expires_at?: number }, user: { id: string; email?: string | null; user_metadata?: Record<string, unknown> }) {
+// La session part dans des cookies httpOnly (auth/auth.ts) : la réponse JSON ne contient plus les jetons.
+function sessionPayload(res: Response, session: { access_token: string; refresh_token?: string; expires_at?: number }, user: { id: string; email?: string | null; user_metadata?: Record<string, unknown> }) {
+  setSessionCookies(res, session);
   return {
-    token: session.access_token,
-    refresh_token: session.refresh_token ?? null,
     expires_at: session.expires_at ?? null,
     user: {
       id: user.id,
@@ -122,7 +127,7 @@ authRouter.post(
     const { data, error } = await supabaseAuth.auth.signInWithPassword({ email, password });
     if (error || !data.session || !data.user) { res.status(500).json({ error: "Compte créé mais connexion impossible — connecte-toi." }); return; }
     logger.info("user_signup", { email, role });
-    res.status(201).json(sessionPayload(data.session, data.user));
+    res.status(201).json(sessionPayload(res, data.session, data.user));
   }),
 );
 
@@ -141,7 +146,7 @@ authRouter.post(
       return;
     }
     await acceptInvites(data.user.id, email).catch(() => {});
-    res.json(sessionPayload(data.session, data.user));
+    res.json(sessionPayload(res, data.session, data.user));
   }),
 );
 
@@ -150,11 +155,11 @@ authRouter.post(
   "/refresh",
   rateLimit(60, 15 * 60_000),
   asyncHandler(async (req, res) => {
-    const refresh = String(req.body?.refresh_token ?? "");
-    if (!refresh) { res.status(400).json({ error: "refresh_token requis" }); return; }
+    const refresh = refreshTokenOf(req);
+    if (!refresh) { res.status(401).json({ error: "session_expired" }); return; }
     const { data, error } = await supabaseAuth.auth.refreshSession({ refresh_token: refresh });
-    if (error || !data.session || !data.user) { res.status(401).json({ error: "session_expired" }); return; }
-    res.json(sessionPayload(data.session, data.user));
+    if (error || !data.session || !data.user) { clearSessionCookies(res); res.status(401).json({ error: "session_expired" }); return; }
+    res.json(sessionPayload(res, data.session, data.user));
   }),
 );
 
@@ -163,9 +168,10 @@ authRouter.post(
   "/logout",
   authRequired,
   asyncHandler(async (req, res) => {
-    const token = (req.headers.authorization ?? "").slice(7);
+    const { token } = tokenOf(req);
     invalidateToken(token);
     try { await supabase.auth.admin.signOut(token); } catch { /* jeton déjà expiré */ }
+    clearSessionCookies(res);
     res.status(204).end();
   }),
 );
@@ -272,7 +278,7 @@ authRouter.post(
     if (error) throw new Error(error.message);
     // Les autres sessions (autres appareils) tombent ; celle-ci reste valide.
     invalidateUserTokens(req.user!.id);
-    try { await supabase.auth.admin.signOut((req.headers.authorization ?? "").slice(7), "others"); } catch { /* ignoré */ }
+    try { await supabase.auth.admin.signOut(tokenOf(req).token, "others"); } catch { /* ignoré */ }
     logger.info("password_changed", { userId: req.user!.id });
     res.json({ ok: true });
   }),
@@ -283,11 +289,16 @@ authRouter.get(
   "/admin/users",
   authRequired,
   adminRequired,
-  asyncHandler(async (_req, res) => {
-    const { data, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 });
-    if (error) throw new Error(error.message);
+  asyncHandler(async (req, res) => {
+    // Tous les comptes (pagination Supabase), filtre optionnel ?q= sur l'adresse ou le nom, puis ?limit=.
+    const q = String(req.query.q ?? "").trim().toLowerCase();
+    const limit = Math.max(1, Math.min(2000, Number(req.query.limit ?? 200) || 200));
+    const all = await listAllUsers();
+    const filtered = q ? all.filter((u) => (u.email ?? "").toLowerCase().includes(q) || String(u.user_metadata?.name ?? "").toLowerCase().includes(q)) : all;
     res.json({
-      users: data.users.map((u) => ({
+      total: all.length,
+      matched: filtered.length,
+      users: filtered.slice(0, limit).map((u) => ({
         id: u.id,
         email: u.email ?? "",
         name: String(u.user_metadata?.name ?? ""),

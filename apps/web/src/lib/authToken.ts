@@ -1,24 +1,23 @@
-// Stockage du jeton de session et de l'organisation active (localStorage),
-// + signal global de déconnexion.
-const KEY = "viralya_token";
-const REFRESH_KEY = "viralya_refresh";
+// Session côté navigateur (14 sept. 2026, audit P2) : les jetons vivent dans des cookies httpOnly posés par
+// l'API (/api/auth/login, /signup, /refresh) — le JavaScript de la page ne les voit jamais. Ici ne restent
+// que l'organisation active et le signal global de déconnexion.
 const ORG_KEY = "viralya_org";
+// Anciennes sessions (avant les cookies) : jetons en localStorage — lus une fois pour migrer, puis effacés.
+const LEGACY_TOKEN_KEY = "viralya_token";
+const LEGACY_REFRESH_KEY = "viralya_refresh";
 
-export function getRefreshToken(): string | null {
-  try { return localStorage.getItem(REFRESH_KEY); } catch { return null; }
-}
-export function setRefreshToken(token: string | null): void {
-  try { if (token) localStorage.setItem(REFRESH_KEY, token); else localStorage.removeItem(REFRESH_KEY); } catch { /* rien */ }
+/** Jeton de renouvellement d'une session antérieure aux cookies, retiré du stockage au passage. */
+export function takeLegacyRefreshToken(): string | null {
+  try {
+    const rt = localStorage.getItem(LEGACY_REFRESH_KEY);
+    localStorage.removeItem(LEGACY_REFRESH_KEY);
+    localStorage.removeItem(LEGACY_TOKEN_KEY);
+    return rt;
+  } catch { return null; }
 }
 
-export function getToken(): string | null {
-  try { return localStorage.getItem(KEY); } catch { return null; }
-}
-export function setToken(token: string): void {
-  try { localStorage.setItem(KEY, token); } catch { /* stockage indisponible */ }
-}
-export function clearToken(): void {
-  try { localStorage.removeItem(KEY); localStorage.removeItem(REFRESH_KEY); localStorage.removeItem(ORG_KEY); } catch { /* rien */ }
+export function clearSession(): void {
+  try { localStorage.removeItem(LEGACY_TOKEN_KEY); localStorage.removeItem(LEGACY_REFRESH_KEY); localStorage.removeItem(ORG_KEY); } catch { /* rien */ }
 }
 
 export function getOrgId(): string | null {
@@ -31,11 +30,9 @@ export function setOrgId(id: string | null): void {
   } catch { /* rien */ }
 }
 
-/** En-têtes à joindre à chaque appel API (session + organisation active). */
+/** En-têtes à joindre à chaque appel API (organisation active ; la session voyage dans le cookie). */
 export function authHeaders(): Record<string, string> {
   const h: Record<string, string> = {};
-  const t = getToken();
-  if (t) h.authorization = `Bearer ${t}`;
   const org = getOrgId();
   if (org) h["x-org-id"] = org;
   return h;

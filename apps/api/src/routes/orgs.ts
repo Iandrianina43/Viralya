@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { Router } from "express";
+import { findUserByEmail, usersByIds } from "../auth/auth";
 import { invalidateOrgCache, listUserOrgs, type OrgRole } from "../auth/org";
 import { config } from "../config";
 import { asyncHandler } from "../lib/asyncHandler";
@@ -75,12 +76,9 @@ orgsRouter.get(
   asyncHandler(async (req, res) => {
     const orgId = String(req.params.id);
     await requireOrgRole(req.user!.id, orgId, ["owner", "admin", "member"], req.user!.role === "admin");
-    const [{ data: rows, error }, { data: users }] = await Promise.all([
-      supabase.from("memberships").select("user_id, role, created_at").eq("org_id", orgId),
-      supabase.auth.admin.listUsers({ page: 1, perPage: 500 }),
-    ]);
+    const { data: rows, error } = await supabase.from("memberships").select("user_id, role, created_at").eq("org_id", orgId);
     if (error) throw new Error(error.message);
-    const byId = new Map((users?.users ?? []).map((u) => [u.id, u]));
+    const byId = await usersByIds((rows ?? []).map((m) => String(m.user_id)));
     res.json({
       members: (rows ?? []).map((m) => {
         const u = byId.get(String(m.user_id));
@@ -103,8 +101,7 @@ orgsRouter.post(
     const wanted = String(req.body?.role ?? "member");
     if (wanted === "owner" && !callerOwner) throw forbidden("Seul un propriétaire peut nommer un propriétaire.");
     const role: OrgRole = wanted === "owner" ? "owner" : wanted === "admin" ? "admin" : "member";
-    const { data } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
-    const user = (data?.users ?? []).find((u) => (u.email ?? "").toLowerCase() === email);
+    const user = await findUserByEmail(email);
     if (!user) {
       if (!emailConfigured()) throw notFound("Aucun compte avec cet email — la personne doit d'abord créer son compte (l'envoi d'invitations par e-mail n'est pas activé)");
       // Invitation : la personne crée son compte avec cette adresse et rejoint l'espace automatiquement.

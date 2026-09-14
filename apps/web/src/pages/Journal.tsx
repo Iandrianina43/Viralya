@@ -45,14 +45,14 @@ export function Journal() {
       <div className="flex items-center justify-between mb-2">
         <h1 className="text-2xl font-bold text-ink">Journal de vie 🧠</h1>
       </div>
-      <p className="text-sm text-slate-500 mb-6">La mémoire de l'avatar : faits, histoires en cours, événements. Il l'enrichit tout seul à chaque publication.</p>
+      <p className="text-sm text-slate-500 mb-6">La mémoire de l'influenceur : faits, histoires en cours, événements. Il l'enrichit tout seul à chaque publication.</p>
       {err && <div className="text-red-600 mb-4 text-sm">Erreur : {err}</div>}
 
       <div className="card p-3 mb-6 flex gap-2">
         <select className="border border-slate-200 rounded-xl px-3 text-sm outline-none focus:border-accent" value={kind} onChange={(e) => setKind(e.target.value)}>
           <option value="fact">Fait</option><option value="storyline">Histoire</option><option value="life_event">Événement</option>
         </select>
-        <input className="flex-1 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent" placeholder="Ajouter à la mémoire de l'avatar…" value={summary} onChange={(e) => setSummary(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
+        <input className="flex-1 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent" placeholder="Ajouter à la mémoire de l'influenceur…" value={summary} onChange={(e) => setSummary(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
         <button onClick={add} className="btn-primary">Ajouter</button>
       </div>
 
@@ -76,7 +76,7 @@ export function Journal() {
         })}
         {loading && <SkeletonList rows={4} height="h-16" />}
         {!loading && entries.length === 0 && !err && (
-          <div className="card p-8 text-center text-slate-400 text-sm">Mémoire vide. L'avatar l'enrichit tout seul à chaque publication.</div>
+          <div className="card p-8 text-center text-slate-400 text-sm">Mémoire vide. L'influenceur l'enrichit tout seul à chaque publication.</div>
         )}
       </div>
 

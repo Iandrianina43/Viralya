@@ -1,3 +1,4 @@
+import { usersByIds } from "../auth/auth";
 import { config } from "../config";
 import { logger } from "../logger";
 import { emailConfigured, emailLayout, sendEmail } from "../providers/email";
@@ -19,8 +20,7 @@ export async function orgEmails(orgId: string): Promise<string[]> {
   const ids = new Set((rows ?? []).map((r) => String(r.user_id)));
   const emails: string[] = [];
   if (ids.size) {
-    const { data } = await supabase.auth.admin.listUsers({ page: 1, perPage: 500 });
-    for (const u of data?.users ?? []) if (ids.has(u.id) && u.email) emails.push(u.email);
+    for (const u of (await usersByIds(ids)).values()) if (u.email) emails.push(u.email);
   }
   cache.set(orgId, { emails, at: Date.now() });
   return emails;

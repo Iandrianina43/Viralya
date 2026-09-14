@@ -37,6 +37,8 @@ export function Settings() {
 
   // Admin
   const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [usersTotal, setUsersTotal] = useState<{ total: number; matched: number } | null>(null);
+  const [userQuery, setUserQuery] = useState("");
   const [setup, setSetup] = useState<Setup | null>(null);
   const [adminErr, setAdminErr] = useState<string | null>(null);
   const [rowBusy, setRowBusy] = useState<string | null>(null);
@@ -79,10 +81,17 @@ export function Settings() {
 
   const loadAdmin = () => {
     if (!isAdmin) return;
-    api.listUsers().then((r) => setUsers(r.users)).catch((e) => setAdminErr(String(e.message ?? e)));
+    api.listUsers(userQuery).then((r) => { setUsers(r.users); setUsersTotal({ total: r.total, matched: r.matched }); }).catch((e) => setAdminErr(String(e.message ?? e)));
     api.setup().then(setSetup).catch(() => {});
   };
   useEffect(() => { loadAdmin(); /* eslint-disable-next-line */ }, [isAdmin]);
+  // Recherche côté serveur (tous les comptes, pas seulement la première page) avec un léger délai de frappe.
+  useEffect(() => {
+    if (!isAdmin) return;
+    const t = setTimeout(() => { api.listUsers(userQuery).then((r) => { setUsers(r.users); setUsersTotal({ total: r.total, matched: r.matched }); }).catch((e) => setAdminErr(String(e.message ?? e))); }, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line
+  }, [userQuery]);
 
   // Espace (organisation) : nom, membres, invitations, départ, suppression.
   const canManageOrg = !!org && (org.role === "owner" || org.role === "admin" || isAdmin);
@@ -365,6 +374,10 @@ export function Settings() {
         {isAdmin && (
           <Section title="Utilisateurs" subtitle="Les membres de la plateforme.">
             {adminErr && <div className="text-sm text-red-600 mb-3">Erreur : {adminErr}</div>}
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <input className="input text-sm w-full sm:w-72" placeholder="Rechercher par e-mail ou nom…" value={userQuery} onChange={(e) => setUserQuery(e.target.value)} aria-label="Rechercher un compte" />
+              {usersTotal && <span className="text-xs text-slate-400">{userQuery ? `${usersTotal.matched} sur ${usersTotal.total} comptes` : `${usersTotal.total} comptes`}{usersTotal.matched > users.length ? ` · ${users.length} affichés` : ""}</span>}
+            </div>
             <div className="overflow-x-auto -mx-5 px-5">
               <table className="w-full text-sm min-w-[540px]">
                 <thead>

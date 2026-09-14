@@ -23,6 +23,25 @@ import { ugcRouter } from "./ugc";
 // Session + organisation active (en-tête x-org-id, sinon la première) :
 // /api/avatars, /api/avatar-drafts, /api/content, /api/studio.
 // /api/admin : rôle admin plateforme ou clé interne x-admin-key.
+// Content-Security-Policy (14 sept. 2026, audit P2). Le front est un build Vite sans script inline ; les styles
+// inline restent permis (attributs style de React) ; polices Google ; images, sons et vidéos depuis n'importe quelle
+// origine https (stockage Supabase signé, aperçus ElevenLabs, rendus des fournisseurs) ; aucun objet ni cadre.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' blob: https:",
+  "connect-src 'self' https://*.supabase.co",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  ...(config.WEB_BASE_URL.startsWith("https://") ? ["upgrade-insecure-requests"] : []),
+].join("; ");
+
 export function registerRoutes(app: Express): void {
   // En-têtes de sécurité (7 sept. 2026) — sans dépendance.
   app.use((_req, res, next) => {
@@ -31,6 +50,7 @@ export function registerRoutes(app: Express): void {
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
     if (config.NODE_ENV === "production") res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
+    res.setHeader("Content-Security-Policy", CSP);
     next();
   });
   // Limiteur global par IP (900 requêtes / 5 min) : protège les routes coûteuses hors auth.

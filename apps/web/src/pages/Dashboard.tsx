@@ -129,7 +129,7 @@ export function Dashboard() {
         const hasBalance = balance != null && (balance.credits != null || balance.balance_usd != null);
         return (
           <div className={`grid grid-cols-2 ${hasBalance ? "lg:grid-cols-5" : "lg:grid-cols-4"} gap-4 mb-6`}>
-            <StatTile label="Avatars" value={avatars.length} />
+            <StatTile label="Influenceurs" value={avatars.length} />
             <StatTile label="Contenus cette semaine" value={computed.week} delta={weekDelta === 0 ? "= vs sem. passée" : `${weekDelta > 0 ? "+" : "−"}${Math.abs(weekDelta)} vs sem. passée`} />
             <StatTile label="À valider" value={computed.review.length} tone={computed.review.length > 0 ? "amber" : null} />
             <StatTile label="En ligne" value={computed.live} />
@@ -266,7 +266,7 @@ export function Dashboard() {
             </div>
             {avatars.length === 0 ? (
               <div className="text-center py-6">
-                <p className="text-sm text-slate-400 mb-3">Aucun avatar pour l'instant.</p>
+                <p className="text-sm text-slate-400 mb-3">Aucun influenceur pour l'instant.</p>
                 <Link to="/avatars/create" className="btn-primary inline-flex items-center gap-2"><Sparkles className="w-4 h-4" /> Créer le premier</Link>
               </div>
             ) : (

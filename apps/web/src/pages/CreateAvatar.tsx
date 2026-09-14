@@ -262,7 +262,7 @@ export function CreateAvatar() {
         {err && <div className="text-red-600 mt-3 text-sm">Erreur : {err}</div>}
         <div className="flex items-center justify-center gap-3 mt-6">
           <button onClick={genFirst} className="btn-primary">🎬 Générer son 1er contenu</button>
-          <button onClick={() => navigate("/avatars")} className="text-sm px-4 py-2.5 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-50">Voir mes avatars</button>
+          <button onClick={() => navigate("/avatars")} className="text-sm px-4 py-2.5 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-50">Voir mes influenceurs</button>
         </div>
         <p className="text-xs text-slate-400 mt-8">💡 Sa planche d'identité (8 vues) et ses échantillons de voix se préparent en arrière-plan — visibles dans l'éditeur.</p>
       </div>
@@ -273,10 +273,10 @@ export function CreateAvatar() {
     <div>
       <audio ref={audioRef} onEnded={() => setPlayingId(null)} className="hidden" />
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-ink">Créer un avatar</h1>
+        <h1 className="text-2xl font-bold text-ink">Créer un influenceur</h1>
         <div className="flex items-center gap-3">
           {saving ? <Loader label="enregistrement…" /> : recordId.current ? <span className="text-xs text-green-600">brouillon enregistré ✓</span> : null}
-          <Link to="/avatars" className="text-sm text-slate-500 hover:underline">← Avatars</Link>
+          <Link to="/avatars" className="text-sm text-slate-500 hover:underline">← Influenceurs</Link>
         </div>
       </div>
 
@@ -316,7 +316,7 @@ export function CreateAvatar() {
           {/* ── VISAGE ── */}
           {phase === "face" && (
             <div className="card p-5">
-              <div className="font-semibold text-ink mb-1">Le visage de {draft.name || "ton avatar"}</div>
+              <div className="font-semibold text-ink mb-1">Le visage de {draft.name || "ton influenceur"}</div>
               <p className="text-sm text-slate-500 mb-4">L'IA propose une fiche portrait détaillée, tu l'ajustes champ par champ, puis tu génères les portraits.</p>
 
               <div className="flex flex-wrap items-end gap-3 mb-3">
@@ -379,7 +379,7 @@ export function CreateAvatar() {
           {/* ── VOIX ── */}
           {phase === "voice" && (
             <div className="card p-5">
-              <div className="font-semibold text-ink mb-1">La voix de {draft.name || "ton avatar"}</div>
+              <div className="font-semibold text-ink mb-1">La voix de {draft.name || "ton influenceur"}</div>
               <p className="text-sm text-slate-500 mb-1">Écoute les voix ElevenLabs et choisis celle qui colle au personnage.</p>
               <p className="text-xs text-slate-400 mb-4">💡 Toutes ces voix sont multilingues — elles parlent français même si l'accent d'origine diffère. Le filtre « langue » = accent.</p>
 
@@ -424,7 +424,7 @@ export function CreateAvatar() {
 
               <div className="flex items-center justify-between mt-6">
                 <button onClick={() => setPhase("face")} className="text-sm text-slate-500 hover:underline flex items-center gap-1"><ArrowLeft className="w-4 h-4" />Retour au visage</button>
-                <button onClick={() => setPhase("review")} disabled={!canCreate} className="btn-primary disabled:opacity-40">Continuer → Créer l'avatar</button>
+                <button onClick={() => setPhase("review")} disabled={!canCreate} className="btn-primary disabled:opacity-40">Continuer → Créer l'influenceur</button>
               </div>
             </div>
           )}
@@ -448,7 +448,7 @@ export function CreateAvatar() {
               {!draft.eleven_voice_id && <div className="text-xs text-amber-600 mt-4">Aucune voix choisie (optionnel) — tu peux revenir à l'étape Voix.</div>}
               <div className="flex items-center justify-between mt-6">
                 <button onClick={() => setPhase("voice")} className="text-sm text-slate-500 hover:underline flex items-center gap-1"><ArrowLeft className="w-4 h-4" />Retour à la voix</button>
-                <button onClick={createAvatar} disabled={!canCreate || creating} className="btn-primary disabled:opacity-50">{creating ? "Création…" : "✨ Créer l'avatar"}</button>
+                <button onClick={createAvatar} disabled={!canCreate || creating} className="btn-primary disabled:opacity-50">{creating ? "Création…" : "✨ Créer l'influenceur"}</button>
               </div>
             </div>
           )}

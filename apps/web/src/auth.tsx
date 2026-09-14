@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, type AuthUser, type Org } from "./api";
-import { clearToken, getOrgId, getToken, setOrgId, setRefreshToken, setToken, UNAUTHORIZED_EVENT } from "./lib/authToken";
+import { clearSession, getOrgId, setOrgId, UNAUTHORIZED_EVENT } from "./lib/authToken";
 
 // ─────────────────────────────────────────────────────────────
-// Session côté front : jeton en localStorage, profil + organisations via
+// Session côté front : cookies httpOnly posés par l'API (jamais lus ici), profil + organisations via
 // /auth/me, organisation active mémorisée, déconnexion automatique sur 401.
 // ─────────────────────────────────────────────────────────────
 
@@ -50,41 +50,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setOrg(pickActive(r.orgs));
   }, []);
 
-  // Restaure la session au chargement.
+  // Restaure la session au chargement : /auth/me avec le cookie (renouvelé au besoin par api.ts) ;
+  // sans session, l'API répond 401 et l'écran de connexion s'affiche.
   useEffect(() => {
-    if (!getToken()) { setLoading(false); return; }
     loadSession()
-      .catch(() => clearToken())
+      .catch(() => clearSession())
       .finally(() => setLoading(false));
   }, [loadSession]);
 
   // 401 quelque part → session expirée → retour à l'écran de connexion.
   useEffect(() => {
-    const onUnauthorized = () => { clearToken(); setUser(null); setOrgs([]); setOrg(null); };
+    const onUnauthorized = () => { clearSession(); setUser(null); setOrgs([]); setOrg(null); };
     window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const r = await api.login(email, password);
-    setToken(r.token);
-    setRefreshToken(r.refresh_token ?? null);
+    await api.login(email, password);
     await loadSession();
   }, [loadSession]);
 
   const signup = useCallback(async (name: string, email: string, password: string, terms = true) => {
     const r = await api.signup(name, email, password, terms);
     if ("confirm_required" in r && r.confirm_required) return { confirm_required: true };
-    const s = r as { token: string; refresh_token?: string | null };
-    setToken(s.token);
-    setRefreshToken(s.refresh_token ?? null);
     await loadSession();
     return {};
   }, [loadSession]);
 
   const logout = useCallback(() => {
-    api.logout().catch(() => {}); // révocation côté serveur, sans bloquer
-    clearToken();
+    api.logout().catch(() => {}); // révocation côté serveur (efface aussi les cookies), sans bloquer
+    clearSession();
     setUser(null);
     setOrgs([]);
     setOrg(null);

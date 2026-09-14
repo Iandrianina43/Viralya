@@ -113,7 +113,7 @@ async function avatarContext(avatarId: string) {
     .select("id, name, niche, city, timezone, system_prompt, products, priority_networks")
     .eq("id", avatarId)
     .single();
-  if (!avatar) throw new Error("avatar introuvable");
+  if (!avatar) throw new Error("influenceur introuvable");
   const [contextBrief, memoryBrief, locations, wardrobe] = await Promise.all([
     buildContextBrief({ city: avatar.city ?? "", niche: avatar.niche ?? "", timezone: avatar.timezone ?? "Europe/Paris" }).catch(() => ""),
     getMemoryBrief(avatarId).catch(() => ""),
@@ -310,7 +310,7 @@ export async function produceEntry(entryId: string, opts: ProduceEntryOptions = 
   if (entry.content_item_id && ["ready", "scheduled", "published"].includes(entry.status)) throw new Error("cette entrée a déjà un contenu");
 
   const { data: avatar } = await supabase.from("avatars").select("id, name, niche, city, timezone, system_prompt").eq("id", entry.avatar_id).single();
-  if (!avatar) throw new Error("avatar introuvable");
+  if (!avatar) throw new Error("influenceur introuvable");
 
   if (entry.type === "video" || entry.type === "ugc") {
     const [contextBrief, memoryBrief, locations] = await Promise.all([

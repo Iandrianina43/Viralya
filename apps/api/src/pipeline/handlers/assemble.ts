@@ -21,7 +21,8 @@ export async function assembleJob(job: JobRow): Promise<void> {
 
   await patchContentItem(id, { payload, status: "needs_review", error: null });
 
-  // Coût réel (plans Seedance + musique) → registre des dépenses ; e-mail « prêt à valider » (jamais bloquants).
+  // Coût réel (plans Seedance + musique, image d'un carrousel ou d'une story) → registre des dépenses ;
+  // e-mail « prêt à valider » (jamais bloquants).
   const actual = Number(item.assets.estimated_cost_usd ?? 0) + Number(item.assets.music_cost_usd ?? 0);
   if (actual > 0) await settleUsage(id, actual);
   void notifyContentStatus(id, "needs_review").catch(() => {});

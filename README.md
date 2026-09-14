@@ -104,6 +104,19 @@ son organisation personnelle ; un propriétaire peut ajouter des membres par ema
 L'organisation active est lue dans l'en-tête `x-org-id` (sinon la première de l'utilisateur).
 Toute lecture d'un influenceur ou d'un contenu vérifie l'appartenance à cette organisation.
 
+### Session (14 sept. 2026)
+
+- `POST /api/auth/login`, `/signup` et `/refresh` posent deux cookies **httpOnly** (`viralya_session` sur `/api`,
+  `viralya_refresh` sur `/api/auth`, SameSite=Lax, Secure en https, 30 jours) ; la réponse JSON ne contient plus
+  de jeton. Le front (`apps/web/src/api.ts`) appelle avec `credentials: "include"` et renouvelle sur 401.
+- Les scripts peuvent toujours envoyer `Authorization: Bearer <jeton Supabase>`.
+- Garde CSRF : une requête d'écriture authentifiée par cookie doit venir de `WEB_BASE_URL` (en-tête Origin
+  ou Referer), sinon 403.
+- `Content-Security-Policy` posée sur toutes les réponses (`routes/index.ts`) : scripts uniquement du site,
+  styles du site + Google Fonts, images/médias en https, aucun cadre.
+- `GET /api/auth/admin/users?q=&limit=` (admin) parcourt tous les comptes Supabase (pagination interne) et
+  filtre sur l'e-mail ou le nom.
+
 ## Pipeline de production (état actuel)
 
 Vidéo hybride (défaut, `payload.format = "hybrid"`) :
