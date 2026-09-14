@@ -35,6 +35,37 @@ export interface Avatar {
   eleven_voice_name: string | null;
 }
 
+export type LaunchNetwork = "instagram" | "tiktok" | "youtube" | "x" | "facebook";
+export interface LaunchIdentity {
+  networks: Array<{ network: LaunchNetwork; priority: "principal" | "secondaire" | "plus_tard"; why: string }>;
+  handles: Array<{ handle: string; why: string }>;
+  display_name: string;
+  email_local_parts: string[];
+  bios: Partial<Record<LaunchNetwork, string>>;
+  hooks: string[];
+  keywords: string[];
+  hashtags: string[];
+  link_suggestion: string;
+  profile_picture_hint: string;
+  banner_scene_en: string;
+  generated_at?: string;
+  edited_bios?: Partial<Record<LaunchNetwork, boolean>>;
+  chosen_handle?: string | null;
+}
+export interface LaunchBanner { id: string; network: "youtube" | "facebook" | "x"; url: string; hook: string | null; with_avatar: boolean; cost_usd: number; created_at: string }
+export interface BannerSpec { w: number; h: number; safe: { x: number; y: number; w: number; h: number }; textSide: "left" | "right"; note: string }
+export interface LaunchKit {
+  avatar_id: string;
+  identity: Partial<LaunchIdentity>;
+  checklist: Record<string, Record<string, boolean>>;
+  notes: Record<string, string>;
+  banners: LaunchBanner[];
+  connected: LaunchNetwork[];
+  rules: Record<LaunchNetwork, { label: string; handleMax: number; handleHint: string; bioMax: number; bioLabel: string; profileUrl: string; picture: string; aiLabel: string | null; banner: BannerSpec | null }>;
+  steps: ReadonlyArray<{ key: string; label: string; networks?: readonly string[]; auto?: boolean }>;
+  hook_max_chars: number;
+}
+
 export interface ContentItem {
   id: string;
   avatar_id: string;
@@ -548,6 +579,16 @@ export const api = {
   producePlanEntry: (entryId: string, b: { resolution?: string; talk_mode?: string; music?: boolean } = {}) =>
     req<{ ok: boolean; content_item_id: string; estimated_cost_usd: number }>(`/calendar/entries/${entryId}/produce`, { method: "POST", body: JSON.stringify(b) }),
   upcomingEntries: () => req<{ entries: Array<PlanEntry & { avatar_name: string | null }> }>("/calendar/upcoming"),
+
+  // ── Kit de lancement (création manuelle des comptes) ──
+  launchKit: (avatarId: string) => req<{ kit: LaunchKit }>(`/launch/avatars/${avatarId}`),
+  launchIdentity: (avatarId: string) => req<{ identity: LaunchIdentity }>(`/launch/avatars/${avatarId}/identity`, { method: "POST", body: "{}" }),
+  launchPatch: (avatarId: string, b: { bios?: Partial<Record<LaunchNetwork, string>>; chosen_handle?: string | null; notes?: Record<string, string>; checklist?: Record<string, Record<string, boolean>> }) =>
+    req<{ kit: LaunchKit }>(`/launch/avatars/${avatarId}`, { method: "PATCH", body: JSON.stringify(b) }),
+  launchBannerEstimate: (avatarId: string, withAvatar: boolean) => req<{ model: string; cost_usd: number }>(`/launch/avatars/${avatarId}/banners/estimate?with_avatar=${withAvatar}`),
+  launchBanner: (avatarId: string, b: { network: "youtube" | "facebook" | "x"; with_avatar: boolean; hook: string | null }) =>
+    req<{ banner: LaunchBanner }>(`/launch/avatars/${avatarId}/banners`, { method: "POST", body: JSON.stringify(b) }),
+  launchDeleteBanner: (avatarId: string, bannerId: string) => req<{ ok: boolean }>(`/launch/avatars/${avatarId}/banners/${bannerId}`, { method: "DELETE" }),
 
   // ── Phase 3 : compte social (simulé) + publication ──
   socialProfile: (avatarId: string, network: string) => req<{ profile: SocialProfile }>(`/social/avatars/${avatarId}/profile?network=${network}`),

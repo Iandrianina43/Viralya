@@ -115,5 +115,5 @@ corrigé le jour même, ce qui reste à faire par priorité, et ce qui dépend d
 3. Créer les comptes Stripe et Resend, poser les clés, vérifier le domaine d'envoi.
 4. Publication réelle : **Zernio retenu et codé le 7 septembre** (voir docs/RECHERCHE-PUBLICATION.md § 5). À faire :
    créer le compte Zernio, poser `ZERNIO_API_KEY` et `ZERNIO_WEBHOOK_SECRET`, appliquer la migration **0019**.
-5. Décider des tarifs des forfaits (indicatifs dans `domain/billing.ts`).
+5. Tarifs : spec de Jérôme corrigée sur les coûts réels le 14 sept. → **docs/TARIFICATION-CREDITS.md** (1 crédit = 0,10 $, quotas de packs à valider).
 6. Brancher un moniteur externe sur `/health` et `/health/worker`.

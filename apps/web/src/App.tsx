@@ -9,6 +9,7 @@ import { Avatars } from "./pages/Avatars";
 import { Bible } from "./pages/Bible";
 import { Calendar } from "./pages/Calendar";
 import { ContentReview } from "./pages/ContentReview";
+import { Launch } from "./pages/Launch";
 import { Social } from "./pages/Social";
 import { Ugc } from "./pages/Ugc";
 import { CreateAvatar } from "./pages/CreateAvatar";
@@ -217,6 +218,7 @@ function Shell() {
               <Route path="/avatars/:id/journal" element={<Journal />} />
               <Route path="/avatars/:id/calendar" element={<Calendar />} />
               <Route path="/avatars/:id/social" element={<Social />} />
+              <Route path="/avatars/:id/launch" element={<Launch />} />
               <Route path="/ugc" element={<Ugc />} />
               <Route path="/ugc/:id" element={<Ugc />} />
               <Route path="/content" element={<ContentReview />} />

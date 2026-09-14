@@ -11,6 +11,7 @@ import { billingRouter, stripeWebhook } from "./billing";
 import { calendarRouter } from "./calendar";
 import { contentRouter } from "./content";
 import { healthRouter } from "./health";
+import { launchRouter } from "./launch";
 import { orgsRouter } from "./orgs";
 import { socialRouter, zernioWebhook } from "./social";
 import { studioRouter } from "./studio";
@@ -51,6 +52,7 @@ export function registerRoutes(app: Express): void {
   app.use("/api/avatars", authRequired, orgRequired, avatarsRouter);
   app.use("/api/avatar-drafts", authRequired, orgRequired, avatarDraftsRouter);
   app.use("/api/content", authRequired, orgRequired, contentRouter);
+  app.use("/api/launch", authRequired, orgRequired, launchRouter);
   app.use("/api/studio", authRequired, orgRequired, studioRouter);
   // Phase 3 : calendrier éditorial, compte social (simulé/réel), campagnes UGC.
   app.use("/api/calendar", authRequired, orgRequired, calendarRouter);

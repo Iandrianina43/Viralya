@@ -81,6 +81,7 @@ export async function referencedStoragePaths(): Promise<Set<string>> {
   await scan("ugc_campaigns", "product");
   await scan("ugc_variants", "*", 200);
   await scan("social_connections", "picture_url");
+  await scan("launch_kits", "banners");
   return paths;
 }
 
@@ -98,6 +99,7 @@ export async function avatarReferencedPaths(avatarId: string): Promise<Set<strin
   await one("avatar_keyframes", "url");
   await one("avatar_locations", "ref_image_url");
   await one("content_items", "id, assets, payload");
+  await one("launch_kits", "banners");
   const { data: items } = await supabase.from("content_items").select("id").eq("avatar_id", avatarId);
   const ids = (items ?? []).map((i) => String(i.id));
   for (let i = 0; i < ids.length; i += 200) {

@@ -118,8 +118,11 @@ export function Social() {
           <h1 className="text-2xl font-bold text-ink">Compte social</h1>
           <p className="text-sm text-slate-500 mt-0.5">{real ? "Publication réelle active sur ce réseau." : "Compte simulé : le feed et les statistiques vivent dans Viralya, comme sur le vrai réseau, sans rien publier dehors."}</p>
         </div>
+        <div className="flex items-center gap-2">
+        <Link to={`/avatars/${id}/launch`} className="btn-secondary text-sm" title="Réseaux, nom de compte, bios, bannières, checklist de création">🚀 Kit de lancement</Link>
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
           {NETWORKS.map((n) => <button key={n.id} onClick={() => setNetwork(n.id)} className={`px-3 py-1.5 rounded-lg text-sm ${network === n.id ? "bg-white shadow-sm text-ink font-semibold" : "text-slate-500"}`}>{n.label}</button>)}
+        </div>
         </div>
       </div>
       {err && <div className="text-sm text-rose-600 mb-3">Erreur : {err}</div>}

@@ -58,12 +58,37 @@ En-têtes HTTP (nosniff, frame deny, referrer, HSTS en prod), limitation de déb
 1. Créer le compte Stripe, poser les clés, enregistrer le webhook, valider les tarifs.
 2. Créer le compte Resend, vérifier le domaine d'envoi.
 3. Publication réelle : Zernio retenu et codé (7 sept.) — compte Zernio, `ZERNIO_API_KEY`, `ZERNIO_WEBHOOK_SECRET`, migration 0019.
-4. Appliquer les migrations 0017, 0018, 0019 et 0020 dans Supabase (0020 = réservation atomique du budget, 14 sept.).
+4. Appliquer les migrations 0020 (réservation atomique du budget) et 0021 (kit de lancement) dans Supabase — 0017 à 0019 vérifiées appliquées le 14 sept.
 5. Poser `DEFAULT_MONTHLY_BUDGET_USD=0` en prod le jour de l'ouverture (forfait obligatoire pour les
    nouveaux espaces) — ton espace admin garde un budget manuel illimité (`monthly_budget_usd` vide,
    ou fixé).
 6. Faire relire les pages légales.
 
-## 8. Reste à faire (audit du 7 sept., voir docs/AUDIT-PROD.md)
+## 8. Kit de lancement d'un influenceur (14 sept., fait — migration 0021)
+
+Réponse aux trois messages de Jérôme (création de compte, nom et réseaux, bannière). Page « Lancement »
+par influenceur (`/avatars/:id/launch`, `apps/api/src/domain/launch.ts`, `lib/banner.ts`) :
+1. **Identité de compte** générée depuis la fiche : réseaux à ouvrir pour la niche (principal /
+   secondaire / plus tard, avec la raison), 6 noms de compte valables sur les cinq réseaux (lettres et
+   chiffres, 5-15 : X refuse le point, Facebook le tiret bas) avec un bouton par réseau pour vérifier la
+   disponibilité à la main, adresse e-mail sur votre domaine, nom affiché, bio par réseau aux limites
+   vérifiées (Instagram 150, TikTok 80, YouTube 1 000, X 160, Facebook 255), accroches, mots-clés.
+2. **Bannières** YouTube 2560×1440 (zone sûre 1546×423), Facebook 851×315 livrée en 2×, X 1500×500 :
+   fond généré (avec l'influenceur via ses références validées, ou univers seul), accroche composée par
+   nous dans la zone sûre, aperçu avec la zone sûre. Instagram et TikTok n'ont pas de bannière.
+3. **Checklist** des étapes manuelles par réseau + notes (e-mail, numéro utilisés) ; la ligne « connecté
+   à Viralya » se coche seule via Zernio.
+Non fait, volontairement : vérification automatique de disponibilité (scraping) et validation par
+téléphone (les réseaux refusent les numéros virtuels ; contourner = bannissement). En attente : les
+prompts et la procédure téléphone de Jérôme, à intégrer comme aide dans la checklist.
+
+## 9. Tarification en crédits (14 sept.)
+
+Spec « Tarification & Facturation v1.0 » reçue de Jérôme, corrigée sur les coûts réels dans
+**docs/TARIFICATION-CREDITS.md** : 1 crédit = 0,10 $ d'infra, crédits débités au coût réel estimé,
+quotas de packs relevés (400 / 1 200 / 2 000 / 6 000 / 10 000), AppSumo réduit. Chantier B (migration
+0021, portefeuille à deux soldes, Checkout CHF, top-up, features par plan) après validation.
+
+## 10. Reste à faire (audit du 7 sept., voir docs/AUDIT-PROD.md)
 
 Voir l'audit complet : UX/UI, gestion des organisations, robustesse, données, coûts.

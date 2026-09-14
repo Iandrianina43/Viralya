@@ -106,7 +106,8 @@ export function Avatars() {
                 <Link to={`/avatars/${a.id}/studio`} className="btn-primary w-full flex items-center justify-center gap-2">
                   <Clapperboard className="w-4 h-4" /> Ouvrir le studio
                 </Link>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
+                  <Link to={`/avatars/${a.id}/launch`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center" title="Kit de lancement : réseaux, nom de compte, bios, bannières, checklist">🚀 Lancement</Link>
                   <Link to={`/avatars/${a.id}/calendar`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center" title="Calendrier éditorial du mois">📅 Calendrier</Link>
                   <Link to={`/avatars/${a.id}/social`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center" title="Compte social : profil, feed, statistiques">📱 Compte</Link>
                 </div>
