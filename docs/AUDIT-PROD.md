@@ -11,7 +11,7 @@ corrigé le jour même, ce qui reste à faire par priorité, et ce qui dépend d
 - Clé admin : refus de démarrer en production si `ADMIN_API_KEY` est absente ou trop courte ; clés
   des fournisseurs de texte et d'images exigées ; `VITE_ADMIN_API_KEY` retiré du front et du runbook.
 - Premier inscrit = admin plateforme **uniquement hors production** (en prod : `ADMIN_EMAIL`).
-- Vérification de l'adresse e-mail à l'inscription (dès que Resend est configuré) ; connexion refusée
+- Vérification de l'adresse e-mail à l'inscription (dès que l'e-mail est configuré : SMTP ou Resend) ; connexion refusée
   tant que l'adresse n'est pas confirmée.
 - Mot de passe oublié (lien par e-mail, page `/reset`) ; l'admin peut aussi définir un mot de passe.
 - Sessions : jeton de rafraîchissement stocké et utilisé automatiquement (plus de déconnexion toutes
@@ -109,7 +109,7 @@ corrigé le jour même, ce qui reste à faire par priorité, et ce qui dépend d
 ## 3. Décisions et actions qui t'appartiennent
 1. Migrations : toutes appliquées (0001 → 0022, vérifié le 14 sept.).
 2. Poser `LEGAL_EDITOR` (raison sociale, adresse, contact) et faire relire les pages légales.
-3. Créer les comptes Stripe et Resend, poser les clés, vérifier le domaine d'envoi.
+3. Poser la clé Stripe et les identifiants SMTP dans le `.env` du VPS.
 4. Publication réelle : **Zernio retenu et codé le 7 septembre** (voir docs/RECHERCHE-PUBLICATION.md § 5). À faire :
    créer le compte Zernio, poser `ZERNIO_API_KEY` et `ZERNIO_WEBHOOK_SECRET`, appliquer la migration **0019**.
 5. Tarifs : spec de Jérôme corrigée sur les coûts réels le 14 sept. → **docs/TARIFICATION-CREDITS.md** (1 crédit = 0,10 $, quotas de packs à valider).

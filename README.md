@@ -190,7 +190,7 @@ Détail et décisions : [docs/PLAN-PLATEFORME.md](docs/PLAN-PLATEFORME.md). Migr
   organisation : chaque lancement est estimé, refusé (HTTP 402) au-delà du budget, inscrit dans
   `usage_ledger` puis corrigé au coût réel. Paramètres › Abonnement et budget. Variables
   `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `DEFAULT_MONTHLY_BUDGET_USD` (converti en crédits : 1 crédit = 0,10 $). Tarification : docs/TARIFICATION-CREDITS.md.
-- **E-mails** (Resend) : contenu prêt à valider, échec, budget à 80 % et 100 %. `RESEND_API_KEY`, `EMAIL_FROM`.
+- **E-mails** (SMTP : `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE` ; repli Resend `RESEND_API_KEY`) : confirmation d'adresse, mot de passe oublié, contenu prêt à valider, échec, crédits à 80 % et 100 %. `EMAIL_FROM`. Test : `pnpm --filter @viralya/api exec tsx scripts/email-check.ts toi@exemple.fr`.
 - **Publication réelle** (Zernio) : `ZERNIO_API_KEY`, `ZERNIO_WEBHOOK_SECRET` (webhook enregistré au démarrage vers
   `https://<site>/api/social/zernio/webhook`). Coût plateforme : 2 comptes connectés gratuits puis 6 $/compte/mois.
 - **Pilote automatique** du calendrier (case dans la page Calendrier) : les entrées planifiées partent

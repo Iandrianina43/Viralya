@@ -26,10 +26,10 @@ document liste ce qui est fait, ce qui demande une clé ou une décision, et ce 
 - **Interface** : Paramètres › Abonnement et budget (jauge du mois, forfaits, portail), budget manuel
   pour l'admin plateforme.
 
-## 2. Notifications (fait, à activer avec une clé Resend)
+## 2. Notifications (fait, à activer avec le SMTP)
 
 Contenu prêt à valider, génération échouée, budget à 80 % / 100 % → e-mail aux membres de
-l'organisation. `RESEND_API_KEY`, `EMAIL_FROM` (domaine vérifié chez Resend). Sans clé : silencieux.
+l'organisation. SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`) + `EMAIL_FROM` ; Resend reste un repli (`RESEND_API_KEY`). Sans configuration : silencieux. Vérification : `scripts/email-check.ts`.
 
 ## 3. Pilote automatique du calendrier (fait)
 
@@ -56,7 +56,7 @@ En-têtes HTTP (nosniff, frame deny, referrer, HSTS en prod), limitation de déb
 ## 7. Décisions et actions qui t'appartiennent
 
 1. Créer le compte Stripe, poser les clés, enregistrer le webhook, valider les tarifs.
-2. Créer le compte Resend, vérifier le domaine d'envoi.
+2. Poser les identifiants SMTP (et un `EMAIL_FROM` sur votre domaine) dans le `.env` du VPS, puis `scripts/email-check.ts`.
 3. Publication réelle : Zernio retenu et codé (7 sept.) — compte Zernio, `ZERNIO_API_KEY`, `ZERNIO_WEBHOOK_SECRET`, migration 0019.
 4. Migrations : toutes appliquées (0001 → 0022) le 14 sept. — désormais appliquées par Claude via le pooler (voir README).
 5. Poser `DEFAULT_MONTHLY_BUDGET_USD=0` en prod le jour de l'ouverture (forfait obligatoire pour les

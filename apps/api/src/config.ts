@@ -65,6 +65,12 @@ const EnvSchema = z.object({
   // Budget des organisations sans forfait ni budget manuel : vide = illimité (mono-client), 0 = forfait obligatoire.
   DEFAULT_MONTHLY_BUDGET_USD: z.preprocess((v) => (v === "" || v == null ? undefined : v), z.coerce.number().min(0).optional()),
   // --- E-mails transactionnels (Resend) ---
+  // E-mail : SMTP (prioritaire) ou Resend en repli.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.preprocess((v) => (v === "" || v == null ? undefined : v), z.coerce.number().int().min(1).max(65535).optional()),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_SECURE: z.enum(["true", "false"]).optional(),
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default("Viralya <no-reply@viralya.app>"),
 
