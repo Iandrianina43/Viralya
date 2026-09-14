@@ -1,6 +1,7 @@
 import { logger } from "../logger";
 import { runJob } from "../pipeline";
 import { claimJobs, completeJob, failJob, heartbeat, markCanceled, reapStaleJobs, type JobRow } from "./queue";
+import { supabase } from "../supabase";
 import { schedulerTick } from "./scheduler";
 
 const WORKER_ID = `worker-${process.pid}`;
@@ -68,7 +69,14 @@ async function handleOne(job: JobRow): Promise<void> {
     await heartbeat(job.id);
     await runJob(job);
     await completeJob(job.id);
-    logger.info("job_done", { id: job.id, type: job.type, ms: Date.now() - t0 });
+    // Coût cumulé du contenu à la fin de l'étape (assets.estimated_cost_usd = ce que les fournisseurs ont facturé jusqu'ici).
+    let cost: number | null = null;
+    if (job.content_item_id) {
+      const { data } = await supabase.from("content_items").select("assets").eq("id", job.content_item_id).maybeSingle();
+      const c = Number((data?.assets as Record<string, unknown> | null)?.estimated_cost_usd);
+      if (Number.isFinite(c)) cost = c;
+    }
+    logger.info("job_done", { id: job.id, type: job.type, ms: Date.now() - t0, content_item_id: job.content_item_id, cost_usd: cost });
   } catch (err) {
     const retry = await failJob(job, err);
     logger.warn("job_failed", { id: job.id, type: job.type, attempts: job.attempts, retry, err: String((err as Error)?.message ?? err) });

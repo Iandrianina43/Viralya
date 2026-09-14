@@ -24,6 +24,8 @@ declare global {
   namespace Express {
     interface Request {
       user?: AuthUser;
+      /** Identifiant de requête (journal d'accès, en-tête x-request-id). */
+      id?: string;
     }
   }
 }

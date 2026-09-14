@@ -31,6 +31,8 @@ export interface SegmentState {
   titre: string;
   duration: number;
   task_id?: string;
+  /** Heure de soumission (délai par segment dans poll_video). */
+  submitted_at?: string;
   clip_url?: string;
   /** Prompt final réellement envoyé à Seedance (archivé pour la salle de production). */
   prompt?: string;
@@ -133,6 +135,7 @@ export async function generateVideoJob(job: JobRow): Promise<void> {
   });
   segments[0]!.phase = "video";
   segments[0]!.task_id = taskId;
+  segments[0]!.submitted_at = new Date().toISOString();
   segments[0]!.prompt = firstPrompt;
 
   await mergeAssets(id, {

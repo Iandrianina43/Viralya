@@ -97,7 +97,6 @@ export function AvatarEditor() {
           </div>
           <div className="flex flex-wrap gap-1.5 mt-3">
             <span className={`text-xs px-2 py-0.5 rounded-full ${form.status === "active" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>{form.status}</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Seedance 2.0</span>
             {form.is_ai_disclosed && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">IA déclarée</span>}
           </div>
           {form.eleven_voice_name && <div className="text-xs text-slate-400 mt-3">🎙️ {form.eleven_voice_name}</div>}
@@ -149,7 +148,7 @@ export function AvatarEditor() {
 
           <Section title="Voix & vidéo">
             {/* LA voix de l'avatar (ElevenLabs) — celle choisie à la création, utilisée dans les vlogs. */}
-            <label className="block"><span className="text-sm text-slate-600">Voix de l'influenceur (ElevenLabs — utilisée dans les vlogs)</span>
+            <label className="block"><span className="text-sm text-slate-600">Voix de l'influenceur (utilisée dans les vlogs)</span>
               <div className="flex gap-2">
                 {elevenVoices.length > 0 ? (
                   <select
@@ -168,7 +167,7 @@ export function AvatarEditor() {
                     ))}
                   </select>
                 ) : (
-                  <input className={field} value={form.eleven_voice_name ?? ""} disabled placeholder="Voix ElevenLabs (chargement…)" />
+                  <input className={field} value={form.eleven_voice_name ?? ""} disabled placeholder="Voix (chargement…)" />
                 )}
                 <button type="button" onClick={playPreview} disabled={!form.eleven_voice_id} className="px-3.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm shrink-0 disabled:opacity-40" title="Écouter un extrait">▶</button>
               </div>
@@ -181,7 +180,7 @@ export function AvatarEditor() {
                   <div className="text-sm text-slate-600 flex items-center gap-2">
                     <Mic className="w-4 h-4 text-slate-400" />
                     Échantillons de timbre ({(form.voice_sample_urls ?? []).length}/2)
-                    <span className="text-xs text-slate-400">— donnent sa voix aux vidéos Seedance</span>
+                    <span className="text-xs text-slate-400">— donnent sa voix aux vidéos</span>
                   </div>
                   <button type="button" onClick={genSamples} disabled={samplesBusy || !form.eleven_voice_id}
                     className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 disabled:opacity-40">
@@ -203,7 +202,7 @@ export function AvatarEditor() {
 
           {/* Références d'identité Seedance : portrait + planche 8 vues. */}
           {editing && (
-            <Section title="Identité visuelle (références Seedance)">
+            <Section title="Identité visuelle (références vidéo)">
               <div className="rounded-xl border border-slate-200 p-3.5">
                 <div className="flex items-center justify-between gap-3 flex-wrap mb-2.5">
                   <div className="text-sm text-slate-600">

@@ -41,8 +41,28 @@ export interface EnqueueOpts {
   maxAttempts?: number;
 }
 
+// Nombre d'essais par type (audit P2, 14 sept. 2026) ; la colonne vaut 5 par défaut en base. Une étape qui PAIE un
+// fournisseur à chaque essai (rendu vidéo, photo) se rejoue peu ; une étape de suivi ou de texte, davantage ;
+// la publication réelle jamais (double post).
+const MAX_ATTEMPTS_BY_TYPE: Partial<Record<JobType, number>> = {
+  generate_text: 4,
+  generate_plan: 2,
+  generate_voice: 3,
+  generate_image: 3,
+  generate_photo: 2,
+  generate_video: 2,
+  generate_shots: 2,
+  poll_video: 4,
+  poll_shots: 4,
+  assemble: 3,
+  schedule: 3,
+  publish: 1,
+  sync_stats: 2,
+};
+
 export async function enqueue(type: JobType, payload: Record<string, unknown>, opts: EnqueueOpts = {}): Promise<JobRow> {
   const run_after = new Date(Date.now() + (opts.runAfterMs ?? 0)).toISOString();
+  const maxAttempts = opts.maxAttempts ?? MAX_ATTEMPTS_BY_TYPE[type];
   const { data, error } = await supabase
     .from("jobs")
     .insert({
@@ -52,7 +72,7 @@ export async function enqueue(type: JobType, payload: Record<string, unknown>, o
       content_item_id: opts.contentItemId ?? null,
       avatar_id: opts.avatarId ?? (typeof payload.avatar_id === "string" ? payload.avatar_id : null),
       label: opts.label ?? null,
-      ...(opts.maxAttempts ? { max_attempts: opts.maxAttempts } : {}),
+      ...(maxAttempts ? { max_attempts: maxAttempts } : {}),
     })
     .select("*")
     .single();

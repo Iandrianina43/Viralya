@@ -1,4 +1,4 @@
-import { Clapperboard, FilePlus2, Mic, Pencil, Sparkles, Trash2, Wand2 } from "lucide-react";
+import { Clapperboard, FilePlus2, Mic, MoreHorizontal, Pencil, Sparkles, Trash2, Wand2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Avatar, type DraftSummary } from "../api";
@@ -18,6 +18,16 @@ export function Avatars() {
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmDraft, setConfirmDraft] = useState<DraftSummary | null>(null);
   const [confirmAvatar, setConfirmAvatar] = useState<Avatar | null>(null);
+  // Menu « Plus » d'une carte (actions rares : contenu du jour, fiche, suppression) — audit P2 : la rangée de
+  // cinq boutons minuscules était illisible sur mobile.
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!menuFor) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenuFor(null); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [menuFor]);
+  const menuItem = "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left text-slate-700 hover:bg-slate-50 disabled:opacity-50";
 
   const [loading, setLoading] = useState(true);
   const load = () => {
@@ -111,12 +121,22 @@ export function Avatars() {
                   <Link to={`/avatars/${a.id}/calendar`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center" title="Calendrier éditorial du mois">📅 Calendrier</Link>
                   <Link to={`/avatars/${a.id}/social`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center" title="Compte social : profil, feed, statistiques">📱 Compte</Link>
                 </div>
-                <div className="grid grid-cols-5 gap-2">
-                  <button onClick={() => setConfirmPlan(a)} disabled={busy === a.id} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center flex items-center justify-center gap-1 disabled:opacity-50" title="Générer le contenu du jour (payant)" aria-label="Générer le contenu du jour"><Wand2 className="w-3.5 h-3.5" /></button>
+                <div className="grid grid-cols-3 gap-2">
                   <Link to={`/avatars/${a.id}/bible`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center" title="Character Bible : références, garde-robe, photos">Bible</Link>
-                  <Link to={`/avatars/${a.id}/journal`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center">Journal</Link>
-                  <Link to={`/avatars/${a.id}`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center flex items-center justify-center gap-1" title="Éditer"><Pencil className="w-3.5 h-3.5" /></Link>
-                  <button onClick={() => setConfirmAvatar(a)} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 text-center flex items-center justify-center" title="Supprimer l'influenceur"><Trash2 className="w-3.5 h-3.5" /></button>
+                  <Link to={`/avatars/${a.id}/journal`} className="text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-center" title="Mémoire de l'influenceur">Journal</Link>
+                  <div className="relative">
+                    <button onClick={() => setMenuFor(menuFor === a.id ? null : a.id)} aria-haspopup="menu" aria-expanded={menuFor === a.id} aria-label={`Plus d'actions pour ${a.name}`} className="w-full text-sm px-2 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center justify-center gap-1"><MoreHorizontal className="w-4 h-4" /> Plus</button>
+                    {menuFor === a.id && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setMenuFor(null)} aria-hidden="true" />
+                        <div role="menu" className="absolute right-0 bottom-full mb-1.5 z-20 w-60 bg-white rounded-xl shadow-card border border-slate-200 p-1" style={{ animation: "modalIn .12s ease-out" }}>
+                          <button role="menuitem" onClick={() => { setMenuFor(null); setConfirmPlan(a); }} disabled={busy === a.id} className={menuItem}><Wand2 className="w-4 h-4 text-slate-400" /> Générer le contenu du jour <span className="ml-auto text-[10px] text-cost">payant</span></button>
+                          <Link role="menuitem" to={`/avatars/${a.id}`} onClick={() => setMenuFor(null)} className={menuItem}><Pencil className="w-4 h-4 text-slate-400" /> Éditer la fiche</Link>
+                          <button role="menuitem" onClick={() => { setMenuFor(null); setConfirmAvatar(a); }} className={`${menuItem} text-rose-600 hover:bg-rose-50`}><Trash2 className="w-4 h-4" /> Supprimer l'influenceur</button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

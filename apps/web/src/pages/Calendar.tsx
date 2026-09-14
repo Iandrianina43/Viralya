@@ -374,7 +374,7 @@ export function Calendar() {
                         </div>
                       )}
                       <Button loading={busy === "prod"} onClick={() => void produce()} icon={<Sparkles className="w-3.5 h-3.5" />}>Produire ce contenu ({estimate(selected.type)})</Button>
-                      <div className="text-[11px] text-slate-400 mt-1.5">{selected.type === "video" ? "Le réalisateur écrit l'histoire depuis ce brief, puis une prise unique de 20-30 s (Seedance 2.5)." : "Légende + image multi-référence avec contrôle du visage."}</div>
+                      <div className="text-[11px] text-slate-400 mt-1.5">{selected.type === "video" ? "Le réalisateur écrit l'histoire depuis ce brief, puis une prise unique de 20-30 s." : "Légende + image multi-référence avec contrôle du visage."}</div>
                     </div>
                   )}
                 </div>

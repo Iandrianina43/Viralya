@@ -29,7 +29,7 @@ const TYPE_ICON: Record<string, typeof Video> = {
   video: Video, hook: Sparkles, carousel: ImageIcon, story: ImageIcon, tweet: Sparkles,
 };
 
-const GEN_STEPS = ["Préparation", "Segments Seedance", "Assemblage", "Prêt"];
+const GEN_STEPS = ["Préparation", "Rendu des plans", "Assemblage", "Prêt"];
 const TERMINAL = ["needs_review", "failed", "scheduled", "published", "rejected", "live", "done"];
 
 interface GenProgress {
@@ -188,20 +188,20 @@ export function Studio() {
         {
           ok: !!avatar.eleven_voice_id,
           label: "Voix choisie",
-          hint: avatar.eleven_voice_name ? `${avatar.eleven_voice_name} — utilisée dans les vlogs.` : "Choisis une voix ElevenLabs dans l'éditeur.",
+          hint: avatar.eleven_voice_name ? `${avatar.eleven_voice_name} — utilisée dans les vlogs.` : "Choisis une voix dans l'éditeur.",
         },
         {
           ok: !!avatar.character_sheet_url,
           label: "Planche d'identité",
           hint: avatar.character_sheet_url
             ? "Character sheet 8 vues — l'identité tient sous tous les angles."
-            : "Génère sa planche 8 vues dans l'éditeur (référence Seedance).",
+            : "Génère sa planche 8 vues dans l'éditeur (référence vidéo).",
         },
         {
           ok: (avatar.voice_sample_urls ?? []).length > 0,
           label: "Timbre de voix",
           hint: (avatar.voice_sample_urls ?? []).length
-            ? "Échantillons prêts — Seedance parle avec sa voix."
+            ? "Échantillons prêts — les vidéos parlent avec sa voix."
             : "Génère ses échantillons de timbre dans l'éditeur.",
         },
       ]
@@ -239,7 +239,6 @@ export function Studio() {
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1.5">
               <span className={`text-xs px-2 py-0.5 rounded-full ${avatar.status === "active" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>● {avatar.status}</span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Seedance 2.0</span>
               {avatar.is_ai_disclosed && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">IA déclarée</span>}
             </div>
             <div className="text-2xl font-bold text-ink truncate">{avatar.name}</div>

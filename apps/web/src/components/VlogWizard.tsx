@@ -459,7 +459,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
                 <span className="text-slate-400">Réalisation</span>
                 <button onClick={() => setSingleTake(true)} className={`px-2.5 py-1.5 rounded-lg border ${singleTake ? "border-accent bg-accent text-white" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`} title="Un seul rendu de 20-30 s : même tenue, même voix, coupes internes entre 3-5 angles">Prise unique (recommandé)</button>
                 <button onClick={() => setSingleTake(false)} className={`px-2.5 py-1.5 rounded-lg border ${!singleTake ? "border-accent bg-accent text-white" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`} title="Plans parlés courts et plans de coupe rendus séparément, puis montés : plus de rythme, risque de ruptures entre plans">Montage en plans</button>
-                <span className="text-slate-400">{singleTake ? "un seul rendu Seedance 2.5, le modèle coupe lui-même entre les angles" : "chaque plan est un rendu séparé"}</span>
+                <span className="text-slate-400">{singleTake ? "un seul rendu, le modèle coupe lui-même entre les angles" : "chaque plan est un rendu séparé"}</span>
                 </>)}
               </div>
               <div className="flex items-center justify-between pt-3 border-t border-slate-100">
@@ -489,7 +489,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
         <div>
           <p className="text-sm text-slate-500 mb-3">
             {kind === "explainer"
-              ? <>{scenes.filter((s) => s.visual === "clip").length} clip(s) Seedance + {scenes.filter((s) => s.visual !== "clip").length} image(s) animée(s) · {scenes.reduce((a, s) => a + s.texte.split(/\s+/).filter(Boolean).length, 0)} mots de voix off. Modifie les textes si besoin.</>
+              ? <>{scenes.filter((s) => s.visual === "clip").length} clip(s) vidéo + {scenes.filter((s) => s.visual !== "clip").length} image(s) animée(s) · {scenes.reduce((a, s) => a + s.texte.split(/\s+/).filter(Boolean).length, 0)} mots de voix off. Modifie les textes si besoin.</>
               : kind === "ad_product"
               ? <>Une prise de {scenes[0]?.duration_sec ?? 30} s en {scenes[0]?.shots.length ?? 4} plans, produit verrouillé{scenes[0]?.texte.trim() ? ` · voix off de ${scenes[0].texte.split(/\s+/).filter(Boolean).length} mots` : " · sans voix off"}. Modifie le texte ou les plans si besoin.</>
               : format === "hybrid" && singleTake
@@ -648,17 +648,17 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
           <div className="rounded-xl border border-slate-200 p-3 mb-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Format</div>
             <div className="grid sm:grid-cols-2 gap-2">
-              <button onClick={() => setFormat("hybrid")} disabled={!elevenOk} title={elevenOk ? "" : "ElevenLabs non configuré côté serveur"}
+              <button onClick={() => setFormat("hybrid")} disabled={!elevenOk} title={elevenOk ? "" : "Synthèse vocale non configurée côté serveur"}
                 className={`text-left rounded-lg border p-2.5 transition disabled:opacity-40 ${format === "hybrid" ? "border-accent bg-accent/5" : "border-slate-200 hover:border-accent/40"}`}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-medium text-ink">Hybride <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 ml-1">recommandé</span></span>
                 </div>
-                <div className="text-[11px] text-slate-400">Voix française ElevenLabs v3, influenceur parlant en lip-sync, b-roll Seedance muet, sous-titres. Chaque plan se régénère seul.</div>
+                <div className="text-[11px] text-slate-400">Voix française naturelle, influenceur parlant en lip-sync, b-roll muet, sous-titres. Chaque plan se régénère seul.</div>
               </button>
               <button onClick={() => setFormat("seedance")}
                 className={`text-left rounded-lg border p-2.5 transition ${format === "seedance" ? "border-accent bg-accent/5" : "border-slate-200 hover:border-accent/40"}`}>
-                <span className="text-sm font-medium text-ink">Seedance plan-séquence</span>
-                <div className="text-[11px] text-slate-400">Voix synthétisée par Seedance (français médiocre), segments enchaînés. Réservé aux vlogs sans dialogue.</div>
+                <span className="text-sm font-medium text-ink">Plan-séquence</span>
+                <div className="text-[11px] text-slate-400">Voix synthétisée par le moteur vidéo (français médiocre), segments enchaînés. Réservé aux vlogs sans dialogue.</div>
               </button>
             </div>
             {format === "hybrid" && talkProviders.length > 0 && (
@@ -678,7 +678,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
           {/* Prompts finaux Seedance — le texte exact qui sera envoyé, segment par segment (plan-séquence uniquement). */}
           <div className={`rounded-xl border border-slate-200 mb-4 overflow-hidden ${format === "hybrid" ? "hidden" : ""}`}>
             <button onClick={() => setPromptsOpen(!promptsOpen)} className="w-full flex items-center justify-between px-3.5 py-2 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Prompts finaux Seedance ({prompts ? `${prompts.length} segments` : "chargement…"})
+              Prompts finaux ({prompts ? `${prompts.length} segments` : "chargement…"})
               {promptsOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
             </button>
             {promptsOpen && (
@@ -699,7 +699,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
           {/* Modèle Seedance 2.0 + résolution + coût estimé */}
           {models.length > 0 && (
             <div className="rounded-xl border border-slate-200 p-3 mb-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">{kind !== "vlog" ? "Rendu Seedance 2.5" : format === "hybrid" ? "Modèle Seedance 2.0 (plans b-roll)" : "Modèle Seedance 2.0"}</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">{kind !== "vlog" ? "Rendu vidéo" : format === "hybrid" ? "Modèle vidéo (plans b-roll)" : "Modèle vidéo"}</div>
               {kind === "vlog" && (
               <div className="grid sm:grid-cols-2 gap-2">
                 {models.map((m) => {
@@ -737,16 +737,16 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
               </div>
               <div className="text-[11px] text-slate-400 mt-2">
                 {kind === "explainer"
-                  ? `${scenes.filter((s) => s.visual === "clip").length} clip(s) Seedance 2.5 sans personne + ${scenes.filter((s) => s.visual !== "clip").length} image(s) animée(s), sa voix off, musique de fond.`
+                  ? `${scenes.filter((s) => s.visual === "clip").length} clip(s) vidéo sans personne + ${scenes.filter((s) => s.visual !== "clip").length} image(s) animée(s), sa voix off, musique de fond.`
                   : kind === "ad_product"
-                  ? "Une prise Seedance 2.5, produit en référence exacte, voix off optionnelle avec sa voix, musique de fond."
+                  ? "Une prise vidéo, produit en référence exacte, voix off optionnelle avec sa voix, musique de fond."
                   : kind === "ad_creator"
                   ? "Prise unique face caméra avec le produit en référence, sa voix, musique de fond."
                   : kind === "clone"
-                  ? "Une prise Seedance 2.5 sur la vidéo source (@video1), l'influenceur à la place de la personne, sa voix sur le texte, sans musique. La vidéo d'entrée est facturée à moitié du tarif."
+                  ? "Une prise vidéo sur la vidéo source, l'influenceur à la place de la personne, sa voix sur le texte, sans musique. La vidéo d'entrée est facturée à moitié du tarif."
                   : format === "hybrid"
                   ? `${scenes.filter((s) => s.mode === "talk").length} plan(s) parlé(s) en lip-sync + ${scenes.filter((s) => s.mode !== "talk").length} plan(s) de coupe avec voix off, ${scenes.reduce((a, s) => a + (s.mode === "talk" ? s.inserts?.length ?? 0 : 0), 0)} insert(s) photo, sous-titres karaoké, musique de fond.`
-                  : `${scenes.length} segment${scenes.length > 1 ? "s" : ""} enchaîné${scenes.length > 1 ? "s" : ""} en plan-séquence (audio + voix générés par Seedance).`}
+                  : `${scenes.length} segment${scenes.length > 1 ? "s" : ""} enchaîné${scenes.length > 1 ? "s" : ""} en plan-séquence (audio + voix générés par le moteur vidéo).`}
               </div>
             </div>
           )}
@@ -756,14 +756,14 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
             <button
               onClick={kind === "vlog" ? produce : produceFormat}
               disabled={busy || scenes.length === 0 || decors.some((d) => !d.image)}
-              title={decors.some((d) => !d.image) ? "Génère d'abord l'image de chaque décor : elle sert de référence visuelle à Seedance." : ""}
+              title={decors.some((d) => !d.image) ? "Génère d'abord l'image de chaque décor : elle sert de référence visuelle au rendu." : ""}
               className="btn-primary flex items-center gap-2 disabled:opacity-50">
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />} Lancer la production{shownEstimate != null ? ` (${fmtCredits(shownEstimate)})` : ""}
             </button>
           </div>
           <p className="text-xs text-slate-400 mt-2 text-right">
             {decors.some((d) => !d.image)
-              ? "⚠️ Chaque décor doit avoir son image avant de lancer (elle sert de référence au keyframe et à Seedance)."
+              ? "⚠️ Chaque décor doit avoir son image avant de lancer (elle sert de référence au keyframe et au rendu)."
               : format === "hybrid"
                 ? "La voix est générée d'abord ; les plans parlés sont animés sur cet audio depuis un keyframe du décor."
                 : "Chaque segment prolonge le précédent (extension @video1 avec le segment entier)."}

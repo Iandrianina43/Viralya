@@ -380,7 +380,7 @@ export function CreateAvatar() {
           {phase === "voice" && (
             <div className="card p-5">
               <div className="font-semibold text-ink mb-1">La voix de {draft.name || "ton influenceur"}</div>
-              <p className="text-sm text-slate-500 mb-1">Écoute les voix ElevenLabs et choisis celle qui colle au personnage.</p>
+              <p className="text-sm text-slate-500 mb-1">Écoute les voix et choisis celle qui colle au personnage.</p>
               <p className="text-xs text-slate-400 mb-4">💡 Toutes ces voix sont multilingues — elles parlent français même si l'accent d'origine diffère. Le filtre « langue » = accent.</p>
 
               {voicesLoading && <Loader label="Chargement des voix…" />}

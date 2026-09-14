@@ -50,6 +50,7 @@ export async function generateShotsJob(job: JobRow): Promise<void> {
     await jobLog(job, `Plan ${shot.idx + 1} : ${shot.role === "talk" ? "prise de parole" : shot.role === "still" ? "image" : "plan Seedance"} — soumission`, Math.round((i / Math.max(1, targets.length)) * 90));
     try {
       await submitShot(ctx, shot, say);
+      shot.submitted_at = new Date().toISOString();
       // Persisté tout de suite : un crash ou une relance ne re-soumet jamais un plan déjà payé.
       await mergeAssets(id, { shots, log });
       if (shot.role !== "still") say(`🎥 ${shot.titre} : ${shot.role === "talk" ? `prise de parole (${shot.provider})` : "plan Seedance"} en cours — ≈ ${(shot.cost_usd ?? 0).toFixed(2)} $`);

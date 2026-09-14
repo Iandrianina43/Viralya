@@ -109,7 +109,11 @@ page ouverte (Studio → Génération, Bible → Univers…). « Plus tard » re
   encore le jeton dans le corps une fois, puis le front l'efface).
 - Coût réel des carrousels et stories : `generateImage` renvoie le prix PiAPI, `assemble` le passe au registre.
 - Annuaire : `findUserByEmail`, `listAllUsers`, `usersByIds` paginent Supabase ; recherche dans Réglages.
-- Vocabulaire « influenceur » dans tous les textes visibles.
+- Vocabulaire « influenceur » dans tous les textes visibles ; noms de fournisseurs hors des écrans clients.
+- Rendus : délai par plan / segment depuis la soumission (25 / 20 min), dernière vérification, annulation, resoumission ;
+  plafond global 60 min qui monte ce qui est prêt. Essais par type de job (`MAX_ATTEMPTS_BY_TYPE`).
+- Journal : `x-request-id` + ligne `http_request` par appel, coût cumulé dans `job_done`.
+- Cartes influenceur : menu « Plus » (contenu du jour, fiche, suppression).
 
 ## 12. Reste à faire (audit du 7 sept., voir docs/AUDIT-PROD.md)
 

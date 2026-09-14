@@ -88,6 +88,8 @@ export interface ShotState {
   /** Part des mots du texte retrouvés dans la transcription (0-1) — contrôle de ce qui est vraiment dit. */
   dialogue_score?: number | null;
   task_id?: string;
+  /** Heure de soumission de la tâche en vol (délai par plan dans poll_shots). */
+  submitted_at?: string;
   clip_url?: string;
   /** Plan « still » : l'image (animée au montage) ; clip sans visage : sa première image. */
   image_url?: string | null;

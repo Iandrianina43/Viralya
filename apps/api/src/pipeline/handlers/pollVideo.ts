@@ -4,7 +4,7 @@ import { cancelProviderTasks } from "../../domain/cancellation";
 import { concatClips } from "../../lib/ffmpeg";
 import { uploadBytes } from "../../lib/storage";
 import { logger } from "../../logger";
-import { piapiPoll, submitSeedanceSegment } from "../../providers/piapi";
+import { piapiCancel, piapiPoll, submitSeedanceSegment } from "../../providers/piapi";
 import { enqueue, type JobRow } from "../../queue/queue";
 import { supabase } from "../../supabase";
 import { advance, loadContentItem, mergeAssets, requireContentItemId, type ContentItemRow } from "../pipelines";
@@ -19,7 +19,9 @@ import { readSeedanceSettings, loadAvatarRefs, type SegmentState } from "./gener
 // ─────────────────────────────────────────────────────────────
 
 const POLL_MS = 15_000;
-const MAX_POLLS_PER_SEGMENT = 60; // ~15 min par segment (les rendus Seedance prennent 2-8 min)
+// Délai par segment mesuré depuis sa soumission (audit P2, 14 sept. 2026) : un compteur de passages rejoué par la
+// relance du job échouait à nouveau immédiatement. Au-delà : dernière vérification, annulation, resoumission (4 essais).
+const SEGMENT_TIMEOUT_MS = 20 * 60_000; // les rendus Seedance prennent 2-8 min
 const MAX_SUBMIT_ATTEMPTS = 4;
 
 // Rapatrie la vidéo dans le Storage (URL provider souvent éphémère).
@@ -76,11 +78,19 @@ async function pollInflight(
   say: (msg: string) => void,
 ): Promise<void> {
   const id = item.id;
-  const result = await piapiPoll(String(seg.task_id));
+  seg.submitted_at ??= new Date().toISOString();
+  let result = await piapiPoll(String(seg.task_id));
 
+  if (result.status === "processing" && Date.now() - Date.parse(seg.submitted_at) > SEGMENT_TIMEOUT_MS) {
+    result = await piapiPoll(String(seg.task_id)); // dernière vérification avant d'abandonner la tâche
+    if (result.status === "processing") {
+      const c = await piapiCancel(String(seg.task_id)).catch(() => "refused" as const);
+      say(`⏱️ ${seg.titre} : délai de rendu dépassé (${Math.round(SEGMENT_TIMEOUT_MS / 60_000)} min) — tâche ${c === "canceled" ? "annulée" : "abandonnée"}`);
+      result = { ...result, status: "failed", error: "délai de rendu dépassé" } as typeof result;
+    }
+  }
   if (result.status === "processing") {
     const polls = Number(job.payload.poll_attempts ?? 0) + 1;
-    if (polls > MAX_POLLS_PER_SEGMENT) throw new Error(`poll_video: timeout du segment ${seg.idx + 1} (rendu trop long)`);
     await enqueue("poll_video", { ...job.payload, poll_attempts: polls }, { contentItemId: id, runAfterMs: POLL_MS });
     return;
   }
@@ -97,6 +107,7 @@ async function pollInflight(
     }
     seg.phase = "waiting";
     seg.task_id = undefined;
+    seg.submitted_at = undefined;
     say(`⚠️ ${seg.titre} : échec (${String(result.error ?? "?").slice(0, 80)}) — nouvel essai ${seg.submit_attempts}/${MAX_SUBMIT_ATTEMPTS - 1}`);
     await mergeAssets(id, { segments, log });
     await enqueue("poll_video", { ...job.payload, poll_attempts: 0 }, { contentItemId: id, runAfterMs: 10_000 });
@@ -169,6 +180,7 @@ async function submitNext(
     });
     seg.phase = "video";
     seg.task_id = taskId;
+    seg.submitted_at = new Date().toISOString();
     seg.prompt = prompt;
     say(`🎥 ${seg.titre} : ${prevClipUrl ? "extension du segment précédent en cours" : "tournage en cours"}`);
     await mergeAssets(id, { segments, log });

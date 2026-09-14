@@ -7,7 +7,7 @@ import { faceScores } from "../../lib/qc";
 import { uploadBytes } from "../../lib/storage";
 import { logger } from "../../logger";
 import { transcribeWords } from "../../providers/elevenlabs";
-import { piapiPoll } from "../../providers/piapi";
+import { piapiCancel, piapiPoll } from "../../providers/piapi";
 import { pollTalkingAvatar } from "../../providers/talkingAvatar";
 import { enqueue, type JobRow } from "../../queue/queue";
 import { supabase } from "../../supabase";
@@ -22,7 +22,17 @@ import { isOutOfCredits, isRateLimited, MAX_SUBMIT_ATTEMPTS, OUT_OF_CREDITS_MSG 
 // ─────────────────────────────────────────────────────────────
 
 const POLL_MS = 15_000;
-const MAX_POLLS = 100; // ≈ 25 min (Kling Avatar / OmniHuman ≈ 5-6 min, Seedance 2-8 min)
+// Délais (audit P2, 14 sept. 2026). Avant : 100 passages ≈ 25 min pour TOUT le contenu, puis échec global alors que
+// les clips pouvaient encore arriver — et la relance du job rejouait le même compteur et échouait à nouveau.
+//  - par plan : au-delà de SHOT_TIMEOUT_MS depuis sa soumission, on revérifie la tâche une dernière fois, on l'annule
+//    (PiAPI n'annule que ce qui n'a pas démarré ; sinon elle va au bout et reste facturée) et on resoumet le plan
+//    comme après un échec de rendu (3 essais), sans toucher aux autres plans ;
+//  - global : après HARD_CAP_POLLS passages, on abandonne ce qui reste en vol et on monte les plans prêts.
+const SHOT_TIMEOUT_MS = 25 * 60_000; // Kling Avatar / OmniHuman ≈ 5-6 min, Seedance 2-8 min
+const HARD_CAP_POLLS = 240; // ≈ 60 min
+type PollResult = Awaited<ReturnType<typeof piapiPoll>> | Awaited<ReturnType<typeof pollTalkingAvatar>>;
+const pollShot = (shot: ShotState): Promise<PollResult> =>
+  String(shot.provider ?? "").startsWith("seedance") ? piapiPoll(String(shot.task_id)) : pollTalkingAvatar(String(shot.task_id));
 
 async function persist(url: string, avatarId: string, itemId: string, name: string): Promise<string> {
   try {
@@ -70,7 +80,16 @@ export async function pollShotsJob(job: JobRow): Promise<void> {
 
   // 1) Plans en vol.
   for (const shot of shots.filter((s) => s.phase === "video" && s.task_id)) {
-    const r = String(shot.provider ?? "").startsWith("seedance") ? await piapiPoll(String(shot.task_id)) : await pollTalkingAvatar(String(shot.task_id));
+    shot.submitted_at ??= new Date().toISOString();
+    let r = await pollShot(shot);
+    if (r.status === "processing" && Date.now() - Date.parse(shot.submitted_at) > SHOT_TIMEOUT_MS) {
+      r = await pollShot(shot); // dernière vérification avant d'abandonner la tâche
+      if (r.status === "processing") {
+        const c = await piapiCancel(String(shot.task_id)).catch(() => "refused" as const);
+        say(`⏱️ ${shot.titre} : délai de rendu dépassé (${Math.round(SHOT_TIMEOUT_MS / 60_000)} min) — tâche ${c === "canceled" ? "annulée" : "abandonnée"}`);
+        r = { ...r, status: "failed", error: "délai de rendu dépassé" } as PollResult;
+      }
+    }
     if (r.status === "processing") continue;
 
     if (r.status === "failed") {
@@ -84,6 +103,7 @@ export async function pollShotsJob(job: JobRow): Promise<void> {
         say(`❌ ${shot.titre} : abandon (${String(shot.error).slice(0, 100)})`);
       } else {
         shot.phase = "waiting";
+        shot.submitted_at = undefined;
         shot.error = (r.error ?? "rendu échoué").slice(0, 200);
         say(`⚠️ ${shot.titre} : échec (${String(r.error ?? "?").slice(0, 80)}) — nouvel essai ${shot.submit_attempts}/${MAX_SUBMIT_ATTEMPTS - 1}`);
       }
@@ -131,6 +151,7 @@ export async function pollShotsJob(job: JobRow): Promise<void> {
     try {
       ctx ??= await loadShotContext(item);
       await submitShot(ctx, shot, say);
+      shot.submitted_at = new Date().toISOString();
       say(`🎥 ${shot.titre} : ${shot.role === "talk" ? `prise de parole (${shot.provider})` : "b-roll Seedance"} relancé`);
     } catch (err) {
       const msg = String((err as Error)?.message ?? err);
@@ -159,9 +180,19 @@ export async function pollShotsJob(job: JobRow): Promise<void> {
   // 3) Encore du travail en vol → on repasse plus tard.
   if (shots.some((s) => s.phase === "video" || s.phase === "waiting")) {
     const polls = Number(job.payload.poll_attempts ?? 0) + 1;
-    if (polls > MAX_POLLS) throw new Error("poll_shots: délai dépassé (rendu trop long)");
-    await enqueue("poll_shots", { ...job.payload, poll_attempts: polls }, { contentItemId: id, runAfterMs: POLL_MS, avatarId: job.avatar_id ?? item.avatar_id, label: job.label ?? item.title ?? null });
-    return;
+    if (polls <= HARD_CAP_POLLS) {
+      await enqueue("poll_shots", { ...job.payload, poll_attempts: polls }, { contentItemId: id, runAfterMs: POLL_MS, avatarId: job.avatar_id ?? item.avatar_id, label: job.label ?? item.title ?? null });
+      return;
+    }
+    // Plafond global : ce qui reste en vol est abandonné (annulation tentée), on monte les plans prêts.
+    for (const shot of shots.filter((s) => s.phase === "video" || s.phase === "waiting")) {
+      if (shot.task_id) await piapiCancel(String(shot.task_id)).catch(() => {});
+      shot.phase = "failed";
+      shot.error = "délai global dépassé (60 min)";
+      say(`⏱️ ${shot.titre} : abandonné, délai global dépassé — montage avec les plans prêts`);
+    }
+    await mergeAssets(id, { shots, log, estimated_cost_usd: totalShotCost(shots) });
+    logger.warn("poll_shots_hard_cap", { itemId: id, done: shots.filter((s) => s.phase === "done").length, total: shots.length });
   }
 
   await finalize(job, item, shots, log, say);
