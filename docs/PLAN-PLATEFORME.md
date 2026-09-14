@@ -115,7 +115,21 @@ page ouverte (Studio → Génération, Bible → Univers…). « Plus tard » re
 - Journal : `x-request-id` + ligne `http_request` par appel, coût cumulé dans `job_done`.
 - Cartes influenceur : menu « Plus » (contenu du jour, fiche, suppression).
 
-## 12. Reste à faire (audit du 7 sept., voir docs/AUDIT-PROD.md)
+## 12. Demandes de Jérôme du 14 sept. (création, économies de crédits)
+
+1. **Vlog économique** : option « coupes en images animées » (assistant vlog, montage en plans séparés). Les plans
+   de coupe deviennent des images animées au montage : keyframe du décor avec l'influenceur (cache → 0 crédit),
+   sinon l'image du décor, sinon une image générée (≈ 1 crédit). Les plans parlés restent en vidéo.
+2. **Analyse du profil → planning** (`domain/strategy.ts`, migration 0023) : il fait ça, il vend ça, à qui, promesse,
+   piliers, réseaux, cadence, mix, thème du mois, arcs. Panneau dans le calendrier, « Proposer le planning »
+   pré-remplit et lance le stratège, qui lit aussi l'analyse à chaque génération. Testé sur Alexandre Weber (12 s).
+3. **Vraies photos des lieux de vie** : à la création d'un lieu ou depuis sa fiche (« Utiliser une vraie photo »),
+   sans image générée. Fiche du lieu : nom, description, consigne de régénération.
+4. **Crédits partout** : plus de dollars sur les écrans clients (assistant vlog, salle de production, Bible, revue,
+   tâches, UGC, lancement, calendrier). Le tableau de bord admin garde le solde PiAPI en dollars.
+5. **Régénérer un lieu avec une consigne** : « plus lumineux, sans le canapé… ».
+
+## 13. Reste à faire (audit du 7 sept., voir docs/AUDIT-PROD.md)
 
 Voir l'audit complet : UX/UI, gestion des organisations, robustesse, données, coûts. Bloqué par des clés :
 Stripe réel, Zernio réel, SMTP.

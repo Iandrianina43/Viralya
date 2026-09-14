@@ -4,6 +4,7 @@ import { getPlanAuto, updatePlanAuto, type PlanAuto } from "../domain/calendar";
 import { asyncHandler } from "../lib/asyncHandler";
 import { badRequest, notFound } from "../lib/httpError";
 import { requireAvatar } from "../lib/scope";
+import { recordUsage, releaseUsage } from "../domain/billing";
 import { enqueue } from "../queue/queue";
 import { supabase } from "../supabase";
 
@@ -54,6 +55,32 @@ calendarRouter.patch(
     }
     if (req.body?.auto_lead_days != null) patch.auto_lead_days = Number(req.body.auto_lead_days);
     res.json({ auto: await updatePlanAuto(String(req.params.id), String(req.params.month), patch) });
+  }),
+);
+
+// Analyse du profil (14 sept.) : ce qu'il fait, vend, à qui → piliers, cadence, arcs ; le stratège la lit ensuite.
+calendarRouter.get(
+  "/avatars/:id/strategy",
+  asyncHandler(async (req, res) => {
+    const avatarId = String(req.params.id);
+    await requireAvatar(req.org!.id, avatarId, "id");
+    const { getStrategyBrief } = await import("../domain/strategy");
+    res.json({ brief: await getStrategyBrief(avatarId) });
+  }),
+);
+calendarRouter.post(
+  "/avatars/:id/strategy",
+  asyncHandler(async (req, res) => {
+    const avatarId = String(req.params.id);
+    await requireAvatar(req.org!.id, avatarId, "id");
+    const { analyzeProfile, STRATEGY_ESTIMATE_USD } = await import("../domain/strategy");
+    const ledgerId = await recordUsage({ orgId: req.org!.id, avatarId, kind: "strategy", estimatedUsd: STRATEGY_ESTIMATE_USD });
+    try {
+      res.json({ brief: await analyzeProfile(avatarId) });
+    } catch (err) {
+      await releaseUsage(ledgerId);
+      throw err;
+    }
   }),
 );
 

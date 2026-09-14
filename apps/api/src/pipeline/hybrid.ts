@@ -396,17 +396,41 @@ export async function submitShot(ctx: ShotContext, shot: ShotState, say?: (msg: 
 
   const person = personWords(pronouns(ctx.avatar));
 
-  // IMAGE FIXE (explicative sans visage) : une image Seedream ≈ 0,07 $, animée au montage sous la voix ElevenLabs.
+  // IMAGE FIXE animée au montage (Ken Burns) sous la voix ElevenLabs, sans rendu vidéo.
+  //  - explicative sans visage : image Seedream ≈ 0,07 $ ;
+  //  - vlog en mode économique (14 sept., demande de Jérôme) : le keyframe du décor avec l'influenceur (généré une
+  //    fois par décor + tenue, puis en cache → 0 $), sinon l'image du décor seule (0 $), sinon une image générée.
   if (shot.role === "still") {
-    const r = await facelessImage(ctx, shot, scene);
-    shot.image_url = r.imageUrl;
+    let imageUrl: string | null = null;
+    let cost = 0;
+    const loc = ctx.item.payload.faceless === true || !shot.location_key ? undefined : ctx.locations.get(shot.location_key);
+    if (loc) {
+      try {
+        const r = await ensureKeyframe(ctx.avatar, { locationId: loc.id, outfitId: ctx.outfit?.id ?? null });
+        if (r.keyframe.validated || qcVerdict(r.keyframe.face_score) === "pass") {
+          imageUrl = r.keyframe.url;
+          cost = r.cached ? 0 : r.cost;
+          shot.keyframe_id = r.keyframe.id;
+          shot.keyframe_url = r.keyframe.url;
+        }
+      } catch (err) {
+        logger.warn("still_keyframe_failed", { itemId: ctx.item.id, shot: shot.idx, err: String((err as Error)?.message ?? err) });
+      }
+      if (!imageUrl && loc.ref_image_url) imageUrl = loc.ref_image_url;
+    }
+    if (!imageUrl) {
+      const r = await facelessImage(ctx, shot, scene);
+      imageUrl = r.imageUrl;
+      cost = r.cost;
+    }
+    shot.image_url = imageUrl;
     shot.provider = undefined;
     shot.native_voice = false;
     shot.task_id = undefined;
     shot.phase = "done";
     shot.error = undefined;
-    shot.cost_usd = Math.round(r.cost * 1000) / 1000;
-    say?.(`🖼️ ${shot.titre} : image générée (${r.cost.toFixed(3)} $) — animée au montage`);
+    shot.cost_usd = Math.round(cost * 1000) / 1000;
+    say?.(`🖼️ ${shot.titre} : image ${cost > 0 ? `générée (${cost.toFixed(3)} $)` : "réutilisée (0 $)"} — animée au montage`);
     return;
   }
 

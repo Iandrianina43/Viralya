@@ -424,7 +424,8 @@ export const api = {
   // Univers de lieux
   listLocations: (id: string, scope?: LocationScope | "all") => req<{ locations: AvatarLocation[] }>(`/avatars/${id}/locations${scope ? `?scope=${scope}` : ""}`),
   generateUniverse: (id: string) => req<{ locations: AvatarLocation[] }>(`/avatars/${id}/locations/generate`, { method: "POST", body: "{}" }),
-  createLocation: (id: string, b: { name: string; description: string }) => req<{ location: AvatarLocation }>(`/avatars/${id}/locations`, { method: "POST", body: JSON.stringify(b) }),
+  createLocation: (id: string, b: { name: string; description: string; with_image?: boolean }) => req<{ location: AvatarLocation }>(`/avatars/${id}/locations`, { method: "POST", body: JSON.stringify(b) }),
+  updateLocation: (id: string, locId: string, b: { name?: string; description?: string; ref_image_url?: string }) => req<{ location: AvatarLocation }>(`/avatars/${id}/locations/${locId}`, { method: "PATCH", body: JSON.stringify(b) }),
   regenerateLocation: (id: string, locId: string, prompt?: string) => req<{ location: AvatarLocation }>(`/avatars/${id}/locations/${locId}/regenerate`, { method: "POST", body: JSON.stringify({ prompt }) }),
   deleteLocation: (id: string, locId: string) => req<void>(`/avatars/${id}/locations/${locId}`, { method: "DELETE" }),
 
@@ -576,6 +577,8 @@ export const api = {
 
   // ── Phase 3 : calendrier éditorial ──
   listPlans: (avatarId: string) => req<{ plans: ContentPlan[] }>(`/calendar/avatars/${avatarId}/plans`),
+  getStrategy: (avatarId: string) => req<{ brief: StrategyBrief | null }>(`/calendar/avatars/${avatarId}/strategy`),
+  analyzeStrategy: (avatarId: string) => req<{ brief: StrategyBrief }>(`/calendar/avatars/${avatarId}/strategy`, { method: "POST", body: "{}" }),
   getPlan: (avatarId: string, month: string) => req<{ plan: ContentPlan | null }>(`/calendar/avatars/${avatarId}/plans/${month}`),
   generatePlan: (avatarId: string, b: { month: string; posts_per_week?: number; brief?: string; arcs?: string[] }) =>
     req<{ ok: boolean; job_id: string; month: string }>(`/calendar/avatars/${avatarId}/plans/generate`, { method: "POST", body: JSON.stringify(b) }),
@@ -632,6 +635,7 @@ export interface PlanEntry {
   network: string; ratio_class: "value" | "proof" | "sale"; pillar: string | null; series: string | null; arc: string | null;
   title: string; brief: string; location_key: string | null; status: PlanEntryStatus; content_item_id: string | null; position: number; created_at: string;
 }
+export interface StrategyBrief { does: string; sells: string; audience: string; promise: string; pillars: string[]; networks: string[]; cadence_per_week: number; mix: Record<string, number>; month_theme: string; arcs: Array<{ name: string; summary: string }>; tone: string; generated_at: string }
 export interface ContentPlan { id: string; avatar_id: string; month: string; status: "draft" | "active" | "archived"; brief: string | null; strategy: PlanStrategy; cost_usd: number; created_at: string; entries?: PlanEntry[]; auto_produce?: boolean; auto_lead_days?: number }
 
 export interface SocialProfile { id: string; avatar_id: string; network: string; handle: string; display_name: string; bio: string; link: string | null; base_followers: number; following: number; created_at: string }

@@ -1,4 +1,5 @@
 import { Check, History, Play, RotateCcw, Send, X, XCircle } from "lucide-react";
+import { fmtCreditsFine } from "../lib/credits";
 import { MediaButton } from "../components/MediaViewer";
 import { ConfirmModal } from "../components/Modal";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -186,7 +187,7 @@ export function ContentReview() {
               {p.caption && <div className="text-sm text-ink">{p.caption}</div>}
               {p.script && it.type !== "photo" && <p className="font-serif text-[15px] text-ink-2 mt-1 max-w-[75ch]">{p.script}</p>}
               {it.error && <div className="text-[13px] text-warn mt-1.5">{it.error}</div>}
-              {a.estimated_cost_usd != null && <div className="font-mono text-[12px] text-cost mt-1">≈ {a.estimated_cost_usd.toFixed(2)} $</div>}
+              {a.estimated_cost_usd != null && <div className="font-mono text-[12px] text-cost mt-1">{fmtCreditsFine(a.estimated_cost_usd)}</div>}
 
               <div className="flex flex-wrap items-center gap-2 mt-3">
                 {a.video_url && (

@@ -1,4 +1,5 @@
 import { AvatarTabs } from "../components/AvatarTabs";
+import { fmtCredits, fmtCreditsFine } from "../lib/credits";
 import { MediaButton } from "../components/MediaViewer";
 import { ConfirmModal } from "../components/Modal";
 import { Camera, Check, Clapperboard, ExternalLink, Images, Shirt, Sparkles, Star, Trash2, UserSquare2 } from "lucide-react";
@@ -189,7 +190,7 @@ export function Bible() {
             disabled={!avatar?.ref_image_url}
             onClick={() => void run("refs", async () => { await api.generateReferences(id); }, "Six vues générées et scorées.")}
           >
-            Générer les 6 vues <span className="font-mono text-[11px] opacity-80">≈ 0,45 $</span>
+            Générer les 6 vues <span className="font-mono text-[11px] opacity-80">{fmtCredits(0.45)}</span>
           </Button>
         </div>
 
@@ -251,7 +252,7 @@ export function Bible() {
             disabled={!avatar?.ref_image_url}
             onClick={() => void run("wardrobe", async () => { await api.generateWardrobe(id, { count: 4 }); }, "Quatre tenues proposées et illustrées.")}
           >
-            Proposer 4 tenues <span className="font-mono text-[11px] opacity-80">≈ 0,30 $</span>
+            Proposer 4 tenues <span className="font-mono text-[11px] opacity-80">{fmtCredits(0.3)}</span>
           </Button>
         </div>
         {wardrobe === null ? (
@@ -321,7 +322,7 @@ export function Bible() {
               </select>
             </label>
             <Button type="submit" icon={<Sparkles className="w-4 h-4" />} loading={busy === "keyframe"} disabled={!avatar?.ref_image_url}>
-              Générer {keyframeCost != null && <span className="font-mono text-[11px] opacity-80">≈ {keyframeCost.toFixed(3)} $</span>}
+              Générer {keyframeCost != null && <span className="font-mono text-[11px] opacity-80">{fmtCreditsFine(keyframeCost)}</span>}
             </Button>
           </form>
         )}
@@ -450,7 +451,7 @@ export function Bible() {
                     {p.error && <p className="text-warn line-clamp-2">{p.error}</p>}
                     <div className="mt-auto pt-1 flex items-center justify-between gap-2 text-[11.5px] text-muted font-mono">
                       <span>{fmtDate(p.created_at)}</span>
-                      <span>{a.estimated_cost_usd != null ? `${a.estimated_cost_usd.toFixed(3)} $` : ""}{a.keyframe_id ? " · keyframe" : ""}</span>
+                      <span>{a.estimated_cost_usd != null ? fmtCreditsFine(a.estimated_cost_usd) : ""}{a.keyframe_id ? " · keyframe" : ""}</span>
                     </div>
                   </figcaption>
                 </figure>

@@ -10,6 +10,7 @@ import { listWardrobe } from "./characterBible";
 import { breakIntoScenes, writeStory } from "./director";
 import { listLocations } from "./locations";
 import { launchProduction } from "./production";
+import { strategyBriefText, type StrategyBrief } from "./strategy";
 
 // ─────────────────────────────────────────────────────────────
 // CALENDRIER ÉDITORIAL (BRIEF § 10-12) — « Générer le calendrier du mois prochain ».
@@ -110,7 +111,7 @@ Réponds UNIQUEMENT en JSON :
 async function avatarContext(avatarId: string) {
   const { data: avatar } = await supabase
     .from("avatars")
-    .select("id, name, niche, city, timezone, system_prompt, products, priority_networks")
+    .select("id, name, niche, city, timezone, system_prompt, products, priority_networks, strategy_brief")
     .eq("id", avatarId)
     .single();
   if (!avatar) throw new Error("influenceur introuvable");
@@ -150,6 +151,7 @@ export async function generatePlan(avatarId: string, input: GeneratePlanInput, o
     ctx.avatar.system_prompt ? `SA PERSONNALITÉ :\n${String(ctx.avatar.system_prompt).slice(0, 1500)}` : "",
     Array.isArray(ctx.avatar.products) && ctx.avatar.products.length ? `SES PRODUITS / PARTENARIATS : ${ctx.avatar.products.join(", ")}` : "",
     Array.isArray(ctx.avatar.priority_networks) && ctx.avatar.priority_networks.length ? `RÉSEAUX PRIORITAIRES : ${ctx.avatar.priority_networks.join(", ")}` : "",
+    ctx.avatar.strategy_brief ? `ANALYSE DU PROFIL (à suivre : ce qu'il fait, ce qu'il vend, à qui, piliers) :\n${strategyBriefText(ctx.avatar.strategy_brief as StrategyBrief)}` : "",
     ctx.contextBrief ? `CONTEXTE RÉEL ACTUEL (météo, saison) :\n${ctx.contextBrief}` : "",
     ctx.memoryBrief ? `SA MÉMOIRE (histoires en cours, faits) :\n${ctx.memoryBrief}` : "",
     ctx.locations.length

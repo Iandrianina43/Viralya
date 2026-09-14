@@ -1,8 +1,9 @@
-import { ChevronDown, ChevronRight, Globe2, Loader2, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { Camera, ChevronDown, ChevronRight, Globe2, Loader2, Pencil, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, type AvatarLocation } from "../api";
 import { ConfirmModal, Modal } from "./Modal";
 
+import { fmtCredits } from "../lib/credits";
 import { errMsg } from "../lib/errMsg";
 // ─────────────────────────────────────────────────────────────
 // Univers : les lieux de vie récurrents de l'avatar (sa chambre, son café…).
@@ -20,6 +21,39 @@ export function Universe({ avatarId }: { avatarId: string }) {
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState("");
   const [addDesc, setAddDesc] = useState("");
+  const [addPhoto, setAddPhoto] = useState<File | null>(null);
+  // Fiche d'un lieu (14 sept., demandes de Jérôme) : nom et description modifiables, régénération de l'image avec
+  // une consigne (« plus lumineux, sans le canapé »), ou une VRAIE photo à la place de l'image générée.
+  const [editLoc, setEditLoc] = useState<AvatarLocation | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editPrompt, setEditPrompt] = useState("");
+  const openEdit = (loc: AvatarLocation) => { setEditLoc(loc); setEditName(loc.name); setEditDesc(loc.description); setEditPrompt(""); };
+  const apply = (loc: AvatarLocation) => { setLocations((ls) => ls.map((l) => (l.id === loc.id ? loc : l))); setEditLoc(loc); };
+
+  const saveEdit = async () => {
+    if (!editLoc) return;
+    setBusy(editLoc.id); setErr(null);
+    try { const r = await api.updateLocation(avatarId, editLoc.id, { name: editName.trim(), description: editDesc.trim() }); apply(r.location); setEditLoc(null); }
+    catch (e) { setErr(errMsg(e)); } finally { setBusy(null); }
+  };
+  const regenWithPrompt = async () => {
+    if (!editLoc) return;
+    setBusy(editLoc.id); setErr(null);
+    try {
+      if (editName.trim() !== editLoc.name || editDesc.trim() !== editLoc.description) await api.updateLocation(avatarId, editLoc.id, { name: editName.trim(), description: editDesc.trim() });
+      const r = await api.regenerateLocation(avatarId, editLoc.id, editPrompt.trim() || undefined);
+      apply(r.location);
+    } catch (e) { setErr(errMsg(e)); } finally { setBusy(null); }
+  };
+  const uploadPhoto = async (loc: AvatarLocation, file: File) => {
+    setBusy(loc.id); setErr(null);
+    try {
+      const { url } = await api.uploadImage(avatarId, file);
+      const r = await api.updateLocation(avatarId, loc.id, { ref_image_url: url });
+      apply(r.location);
+    } catch (e) { setErr(errMsg(e)); } finally { setBusy(null); }
+  };
 
   const load = () => api.listLocations(avatarId)
     .then((r) => {
@@ -63,9 +97,15 @@ export function Universe({ avatarId }: { avatarId: string }) {
     if (addName.trim().length < 2 || addDesc.trim().length < 10) return;
     setBusy("add"); setErr(null);
     try {
-      const r = await api.createLocation(avatarId, { name: addName.trim(), description: addDesc.trim() });
-      setLocations((ls) => [...ls, r.location]);
-      setAddOpen(false); setAddName(""); setAddDesc("");
+      // Avec une vraie photo : aucune image générée (with_image: false), la photo devient la référence du décor.
+      const r = await api.createLocation(avatarId, { name: addName.trim(), description: addDesc.trim(), with_image: !addPhoto });
+      let loc = r.location;
+      if (addPhoto) {
+        const { url } = await api.uploadImage(avatarId, addPhoto);
+        loc = (await api.updateLocation(avatarId, loc.id, { ref_image_url: url })).location;
+      }
+      setLocations((ls) => [...ls, loc]);
+      setAddOpen(false); setAddName(""); setAddDesc(""); setAddPhoto(null);
     } catch (e) { setErr(errMsg(e)); } finally { setBusy(null); }
   };
 
@@ -131,8 +171,9 @@ export function Universe({ avatarId }: { avatarId: string }) {
                 {busy === loc.id && (
                   <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><Loader2 className="w-6 h-6 text-white animate-spin" /></div>
                 )}
-                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                  <button onClick={() => regen(loc)} disabled={!!busy} title="Régénérer l'image" className="w-7 h-7 rounded-lg bg-white/90 text-slate-600 hover:text-accent flex items-center justify-center"><RefreshCw className="w-3.5 h-3.5" /></button>
+                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
+                  <button onClick={() => openEdit(loc)} disabled={!!busy} title="Modifier : description, consigne de régénération, vraie photo" aria-label={`Modifier ${loc.name}`} className="w-7 h-7 rounded-lg bg-white/90 text-slate-600 hover:text-accent flex items-center justify-center"><Pencil className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => regen(loc)} disabled={!!busy} title={`Régénérer l'image (${fmtCredits(0.15)})`} aria-label={`Régénérer l'image de ${loc.name}`} className="w-7 h-7 rounded-lg bg-white/90 text-slate-600 hover:text-accent flex items-center justify-center"><RefreshCw className="w-3.5 h-3.5" /></button>
                   <button onClick={() => setConfirmDel(loc)} title="Supprimer le lieu" className="w-7 h-7 rounded-lg bg-white/90 text-slate-600 hover:text-rose-600 flex items-center justify-center"><Trash2 className="w-3.5 h-3.5" /></button>
                 </div>
               </div>
@@ -155,6 +196,10 @@ export function Universe({ avatarId }: { avatarId: string }) {
           </label>
           <label className="block"><span className="text-sm text-slate-600">Description précise (décor figé — murs, meubles, lumière…)</span>
             <textarea className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-accent mt-1 h-24 resize-none" placeholder="ex : salle de sport moderne, murs béton clair, machines noires, grande baie vitrée, lumière naturelle…" value={addDesc} onChange={(e) => setAddDesc(e.target.value)} />
+            <label className="flex items-center gap-2 text-xs text-slate-500 mt-2 cursor-pointer">
+              <Camera className="w-3.5 h-3.5" /> {addPhoto ? `Vraie photo : ${addPhoto.name}` : `Vraie photo (optionnel, sinon l'IA génère l'image · ${fmtCredits(0.15)})`}
+              <input type="file" accept="image/*" className="hidden" onChange={(e) => setAddPhoto(e.target.files?.[0] ?? null)} />
+            </label>
           </label>
           <div className="flex justify-end gap-2">
             <button onClick={() => setAddOpen(false)} className="text-sm px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50">Annuler</button>
@@ -165,6 +210,34 @@ export function Universe({ avatarId }: { avatarId: string }) {
         </div>
       </Modal>
 
+      <Modal open={!!editLoc} onClose={() => setEditLoc(null)} title={editLoc ? `Modifier « ${editLoc.name} »` : ""} maxWidth="max-w-lg">
+        {editLoc && (
+          <div className="p-5 space-y-3">
+            <div className="flex gap-3">
+              <div className="w-24 aspect-[3/4] rounded-lg bg-slate-100 overflow-hidden shrink-0 relative">
+                {editLoc.ref_image_url && <img src={editLoc.ref_image_url} alt="" className="w-full h-full object-cover" />}
+                {busy === editLoc.id && <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><Loader2 className="w-5 h-5 text-white animate-spin" /></div>}
+              </div>
+              <div className="flex-1 space-y-2 min-w-0">
+                <label className="block"><span className="text-xs font-semibold text-slate-500">Nom</span><input className="input w-full text-sm mt-1" value={editName} onChange={(e) => setEditName(e.target.value)} /></label>
+                <label className="block"><span className="text-xs font-semibold text-slate-500">Description (sert de prompt à l'image et aux vidéos)</span><textarea className="input w-full text-sm mt-1" rows={3} value={editDesc} onChange={(e) => setEditDesc(e.target.value)} /></label>
+              </div>
+            </div>
+            <label className="block"><span className="text-xs font-semibold text-slate-500">Consigne pour régénérer l'image (optionnel)</span><input className="input w-full text-sm mt-1" placeholder="Ex. : plus lumineux, sans le canapé, vue sur la mer" value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} /></label>
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button onClick={() => void regenWithPrompt()} disabled={!!busy} className="btn-secondary text-sm flex items-center gap-1.5 disabled:opacity-50"><RefreshCw className="w-3.5 h-3.5" /> Régénérer l'image · {fmtCredits(0.15)}</button>
+              <label className="btn-secondary text-sm flex items-center gap-1.5 cursor-pointer"><Camera className="w-3.5 h-3.5" /> Utiliser une vraie photo · offert
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f && editLoc) void uploadPhoto(editLoc, f); e.target.value = ""; }} />
+              </label>
+              <div className="ml-auto flex gap-2">
+                <button onClick={() => setEditLoc(null)} className="text-sm text-slate-500 hover:text-slate-700 px-2">Fermer</button>
+                <button onClick={() => void saveEdit()} disabled={!!busy || editName.trim().length < 2 || editDesc.trim().length < 10} className="btn-primary text-sm disabled:opacity-50">Enregistrer</button>
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-400">Une vraie photo (sa chambre, son café) donne des décors plus fidèles et ne coûte rien. Cadrage vertical conseillé.</p>
+          </div>
+        )}
+      </Modal>
       <ConfirmModal
         open={!!confirmDel}
         title={`Supprimer « ${confirmDel?.name ?? ""} » ?`}

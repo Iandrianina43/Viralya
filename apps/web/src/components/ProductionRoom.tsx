@@ -1,4 +1,5 @@
 import { MediaButton } from "./MediaViewer";
+import { fmtCreditsFine } from "../lib/credits";
 import { CheckCircle2, ChevronDown, ChevronRight, Clapperboard, Film, Link2, Loader2, Mic, Play, RefreshCw, ScrollText, StopCircle, Volume2, X, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ContentItem, SegmentState, ShotState, VlogLogEntry, VlogProduction } from "../api";
@@ -132,7 +133,7 @@ export function ProductionRoom({
         </div>
         <div className="flex items-center gap-1.5">
           {typeof assets.estimated_cost_usd === "number" && (
-            <span className="text-xs px-2 py-1 rounded-lg bg-slate-100 text-slate-500" title="Coût estimé de la production">≈ {assets.estimated_cost_usd.toFixed(2)} $</span>
+            <span className="text-xs px-2 py-1 rounded-lg bg-slate-100 text-slate-500" title="Coût estimé de la production">{fmtCreditsFine(assets.estimated_cost_usd)}</span>
           )}
           {onCancel && !finished && !failed && (
             <button onClick={() => setConfirmCancel(true)} disabled={canceling} className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 flex items-center gap-1.5 disabled:opacity-50">
@@ -223,7 +224,7 @@ export function ProductionRoom({
                         texte {Math.round(sh.dialogue_score * 100)} %
                       </span>
                     )}
-                    {typeof sh?.cost_usd === "number" && sh.cost_usd > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">{sh.cost_usd.toFixed(2)} $</span>}
+                    {typeof sh?.cost_usd === "number" && sh.cost_usd > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">{fmtCreditsFine(sh.cost_usd)}</span>}
                     {sh?.tts_model && <span className="text-[10px] text-slate-400">{sh.tts_model === "eleven_v3" ? "voix v3" : "voix v2"}</span>}
                   </div>
                   {(sh?.inserts?.length ?? 0) > 0 && (

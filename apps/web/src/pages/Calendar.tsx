@@ -1,9 +1,9 @@
-import { CalendarDays, ChevronLeft, ChevronRight, Clapperboard, Image as ImageIcon, Layers, Loader2, Plus, Sparkles, Trash2, Wand2, X } from "lucide-react";
+import { BrainCircuit, CalendarDays, ChevronLeft, ChevronRight, Clapperboard, Image as ImageIcon, Layers, Loader2, Plus, Sparkles, Trash2, Wand2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, type Avatar, type AvatarLocation, type ContentPlan, type PlanEntry, type PlanEntryType } from "../api";
+import { api, type Avatar, type AvatarLocation, type ContentPlan, type PlanEntry, type PlanEntryType, type StrategyBrief } from "../api";
 import { AvatarTabs } from "../components/AvatarTabs";
-import { fmtCredits, refreshCredits } from "../lib/credits";
+import { creditsFor, fmtCredits, refreshCredits } from "../lib/credits";
 import { ConfirmModal } from "../components/Modal";
 import { Button, useToast, Skeleton } from "../components/ui";
 
@@ -79,15 +79,34 @@ export function Calendar() {
 
   // Confirmation avant une action payante, irréversible ou publique.
   const [confirmAct, setConfirmAct] = useState<{ title: string; message: string; danger?: boolean; confirmLabel?: string; run: () => void } | null>(null);
-  const generateNow = async () => {
+  const generateNow = async (override?: { perWeek: number; brief: string; arcs: string[] }) => {
     if (!id) return;
     setBusy("gen");
     try {
-      await api.generatePlan(id, { month, posts_per_week: perWeek, brief: brief.trim() || undefined, arcs: arcs.split("\n").map((s) => s.trim()).filter(Boolean) });
+      const o = override ?? { perWeek, brief: brief.trim(), arcs: arcs.split("\n").map((s) => s.trim()).filter(Boolean) };
+      await api.generatePlan(id, { month, posts_per_week: o.perWeek, brief: o.brief || undefined, arcs: o.arcs });
       setGenerating(true);
       setShowGen(false);
       toast.push("ok", "Le stratège écrit le mois : une minute environ.");
     } catch (e) { toast.push("warn", String((e as Error).message ?? e)); } finally { setBusy(null); }
+  };
+
+  // Analyse du profil (14 sept., demande de Jérôme) : ce qu'il fait, vend, à qui → piliers, cadence, arcs.
+  // « Proposer le planning » lance la génération du mois avec ces réglages.
+  const [strategy, setStrategy] = useState<StrategyBrief | null>(null);
+  const [strategyOpen, setStrategyOpen] = useState(false);
+  useEffect(() => { if (id) api.getStrategy(id).then((r) => setStrategy(r.brief)).catch(() => {}); }, [id]);
+  const analyze = async () => {
+    if (!id) return;
+    setBusy("analyze");
+    try { const r = await api.analyzeStrategy(id); setStrategy(r.brief); setStrategyOpen(true); toast.push("ok", "Profil analysé."); refreshCredits(); }
+    catch (e) { toast.push("warn", String((e as Error).message ?? e)); } finally { setBusy(null); }
+  };
+  const proposePlan = () => {
+    if (!strategy) return;
+    const a = strategy.arcs.map((x) => `${x.name} — ${x.summary}`);
+    setPerWeek(strategy.cadence_per_week); setArcs(a.join("\n")); setBrief(strategy.month_theme ? `Suis l'analyse du profil. Thème du mois : ${strategy.month_theme}` : "Suis l'analyse du profil.");
+    setConfirmAct({ title: "Proposer le planning du mois ?", message: `Le stratège écrit ${fmtMonth.format(new Date(`${month}-01T12:00:00`))} à partir de l'analyse : ${strategy.cadence_per_week} contenus par semaine, ${strategy.arcs.length} arc${strategy.arcs.length > 1 ? "s" : ""}.${plan ? " Le calendrier actuel du mois sera remplacé." : ""}`, confirmLabel: "Écrire le mois", run: () => void generateNow({ perWeek: strategy.cadence_per_week, brief: strategy.month_theme ? `Suis l'analyse du profil. Thème du mois : ${strategy.month_theme}` : "Suis l'analyse du profil.", arcs: a }) });
   };
 
   const grid = useMemo(() => {
@@ -148,7 +167,7 @@ export function Calendar() {
     } catch (e) { toast.push("warn", String((e as Error).message ?? e)); } finally { setBusy(null); }
   };
 
-  const estimate = (t: PlanEntryType | undefined) => (t === "video" || t === "ugc" ? (resolution === "1080p" ? "≈ 22-27 $" : "≈ 10-12 $") : t === "photo" ? "≈ 0,10 $" : "≈ 0,30 $");
+  const estimate = (t: PlanEntryType | undefined) => (t === "video" || t === "ugc" ? (resolution === "1080p" ? `≈ ${creditsFor(22)}-${creditsFor(27)} crédits` : `≈ ${creditsFor(10)}-${creditsFor(12)} crédits`) : t === "photo" ? fmtCredits(0.1) : fmtCredits(0.3));
   const entries = plan?.entries ?? [];
   const counts = entries.reduce<Record<string, number>>((a, e) => ({ ...a, [e.type]: (a[e.type] ?? 0) + 1 }), {});
 
@@ -179,6 +198,35 @@ export function Calendar() {
           <Link to={`/avatars/${id}/social`} className="btn-secondary text-sm">Compte social</Link>
           <button onClick={() => setShowGen((s) => !s)} className="btn-primary flex items-center gap-2"><Wand2 className="w-4 h-4" /> {plan ? "Régénérer le mois" : "Générer le mois"}</button>
         </div>
+      </div>
+
+      {/* Analyse du profil : il fait ça, il vend ça, à ces gens → piliers, réseaux, cadence, arcs proposés. */}
+      <div className="card p-4 mb-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => setStrategyOpen((v) => !v)} className="flex items-center gap-2 text-left min-w-0 flex-1">
+            <BrainCircuit className="w-5 h-5 text-accent shrink-0" />
+            <span className="font-bold text-ink">Analyse du profil</span>
+            {strategy ? <span className="text-xs text-slate-400 truncate">· {strategy.does}</span> : <span className="text-xs text-slate-400">· pas encore analysé</span>}
+          </button>
+          {strategy && <Button variant="secondary" loading={busy === "analyze"} onClick={() => void analyze()}>Refaire l'analyse · offert</Button>}
+          {strategy ? <Button loading={busy === "gen"} onClick={proposePlan}><Wand2 className="w-4 h-4" /> Proposer le planning</Button> : <Button loading={busy === "analyze"} onClick={() => void analyze()}><BrainCircuit className="w-4 h-4" /> Analyser le profil · offert</Button>}
+        </div>
+        {strategy && strategyOpen && (
+          <div className="grid md:grid-cols-2 gap-3 mt-3 text-sm">
+            <div className="space-y-1.5">
+              <div><span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Il fait</span><div className="text-ink">{strategy.does}</div></div>
+              <div><span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Il vend</span><div className="text-ink">{strategy.sells}</div></div>
+              <div><span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">À qui</span><div className="text-ink">{strategy.audience}</div></div>
+              {strategy.promise && <div><span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Promesse</span><div className="text-ink">{strategy.promise}</div></div>}
+            </div>
+            <div className="space-y-1.5">
+              <div><span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Piliers</span><div className="flex flex-wrap gap-1 mt-1">{strategy.pillars.map((p) => <span key={p} className="text-xs px-2 py-0.5 rounded-full bg-paper-2 text-ink-2">{p}</span>)}</div></div>
+              <div className="text-xs text-slate-500">Réseaux : {strategy.networks.join(", ") || "—"} · {strategy.cadence_per_week} contenus / semaine · mix {Object.entries(strategy.mix).map(([k, v]) => `${Math.round(v * 100)} % ${k}`).join(", ")}</div>
+              {strategy.month_theme && <div><span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Thème du mois</span><div className="text-ink">{strategy.month_theme}</div></div>}
+              {strategy.arcs.length > 0 && <div><span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Arcs proposés</span><ul className="mt-1 space-y-1">{strategy.arcs.map((a) => <li key={a.name} className="text-xs text-ink-2"><span className="font-semibold text-ink">{a.name}</span> — {a.summary}</li>)}</ul></div>}
+            </div>
+          </div>
+        )}
       </div>
 
       {showGen && (

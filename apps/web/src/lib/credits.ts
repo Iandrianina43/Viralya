@@ -17,6 +17,13 @@ export function creditsFor(usd: number, creditUsd = cached?.status.credit_usd ??
   return Math.max(0, Math.round(Math.max(0, usd) / creditUsd));
 }
 
+/** Coût unitaire fin (par plan, par seconde) : « ≈ 0,3 crédit », jamais « offert » — c'est un prix, pas une estimation. */
+export function fmtCreditsFine(usd: number, unit = ""): string {
+  const c = Math.max(0, usd) / (cached?.status.credit_usd ?? DEFAULT_CREDIT_USD);
+  const txt = c < 0.05 ? "< 0,1" : c < 10 ? c.toFixed(1).replace(".", ",") : String(Math.round(c));
+  return `≈ ${txt} crédit${c >= 2 ? "s" : ""}${unit}`;
+}
+
 /** « ≈ 12 crédits » (ou « offert » sous le seuil). */
 export function fmtCredits(usd: number): string {
   const c = creditsFor(usd);

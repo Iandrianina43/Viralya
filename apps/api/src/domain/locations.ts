@@ -62,6 +62,19 @@ export async function createLocation(
   return row;
 }
 
+/** Nom, description ou image (vraie photo envoyée par l'utilisateur) d'un lieu. */
+export async function updateLocation(avatarId: string, locationId: string, patch: { name?: string; description?: string; ref_image_url?: string }): Promise<AvatarLocation> {
+  const row: Record<string, unknown> = {};
+  if (typeof patch.name === "string" && patch.name.trim().length >= 2) row.name = patch.name.trim().slice(0, 80);
+  if (typeof patch.description === "string" && patch.description.trim().length >= 10) row.description = patch.description.trim().slice(0, 1200);
+  if (typeof patch.ref_image_url === "string" && /^https?:\/\//.test(patch.ref_image_url)) row.ref_image_url = patch.ref_image_url;
+  if (!Object.keys(row).length) throw new Error("rien à modifier");
+  const { data, error } = await supabase.from("avatar_locations").update(row).eq("id", locationId).eq("avatar_id", avatarId).select("*").maybeSingle();
+  if (error) throw new Error(`location update: ${error.message}`);
+  if (!data) throw new Error("lieu introuvable");
+  return data as AvatarLocation;
+}
+
 export async function regenerateLocationImage(avatarId: string, locationId: string, refinement?: string): Promise<AvatarLocation> {
   const { data: loc } = await supabase.from("avatar_locations").select("*").eq("id", locationId).eq("avatar_id", avatarId).single();
   if (!loc) throw new Error("lieu introuvable");

@@ -163,6 +163,7 @@ studioRouter.post("/vlog/estimate", (req, res) => {
       texte: String(s.texte ?? ""),
       duration_sec: Number(s.duration_sec) || 12,
       ...(Array.isArray(s.inserts) ? { inserts: s.inserts } : {}),
+      ...(s.visual === "still" ? { visual: "still" as const } : {}),
     })) as VlogScene[];
     const settings = readHybridSettings({ talk_provider: req.body?.talk_provider, talk_mode: req.body?.talk_mode, video_model: taskType, resolution });
     const estimate = estimateHybridCost(scenes, settings, { music: req.body?.music !== false });

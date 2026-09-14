@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 
 const INSERT_LABEL: Record<string, string> = { illustration: "illustration", location: "décor seul", close: "gros plan", full: "en pied", selfie: "selfie" };
 import { useEffect, useMemo, useState } from "react";
-import { fmtCredits } from "../lib/credits";
+import { fmtCredits, fmtCreditsFine } from "../lib/credits";
 import { api, type AvatarLocation, type CloneSource, type FormatKind, type FormatProduct, type LocationScope, type SeedanceResolution, type TalkProvider, type TalkProviderInfo, type VideoFormat, type VideoModelInfo, type VlogProduction, type VlogScene } from "../api";
 
 import { errMsg } from "../lib/errMsg";
@@ -72,6 +72,10 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
   const [fmtEstimate, setFmtEstimate] = useState<number | null>(null);
   // B-roll (inserts photo pendant la parole + plans de coupe) — désactivé par défaut depuis le 6 sept.
   const [broll, setBroll] = useState(false);
+  // Mode économique (14 sept., demande de Jérôme) : les plans de coupe (voix off) deviennent des images animées
+  // (keyframe du décor, en cache → 0 crédit ; sinon ≈ 1 crédit) au lieu de clips vidéo (≈ 3 à 8 crédits chacun).
+  // Les plans où l'influenceur parle restent en vidéo. Implique le montage en plans séparés.
+  const [economy, setEconomy] = useState(false);
 
   // Étape 2
   const [story, setStory] = useState("");
@@ -122,6 +126,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
       const total = scenes.reduce((acc, sc) => {
         const speech = sc.texte.trim() ? Math.max(1.5, sc.texte.trim().length / 14) : 0;
         if (sc.mode === "talk") return acc + talkUnit * Math.max(1, Math.ceil(speech + 0.5)) + speech * 0.0025;
+        if (economy && !singleTake) return acc + 0.07 + speech * 0.0025; // image animée (au plus une image Seedream)
         return acc + unit * clamp(Math.max(sc.duration_sec, Math.ceil(speech + 0.5))) + speech * 0.0025;
       }, 0);
       return Math.round(total * 100) / 100;
@@ -131,7 +136,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
       return acc + unit * clamp(sc.duration_sec) + (unit / 2) * input;
     }, 0);
     return Math.round(total * 100) / 100;
-  }, [models, videoModel, resolution, scenes, format, talkProviders, talkProvider]);
+  }, [models, videoModel, resolution, scenes, format, talkProviders, talkProvider, economy, singleTake]);
 
   // Prompts finaux Seedance (prévisualisation) — chargés à l'étape Décors.
   const [prompts, setPrompts] = useState<string[] | null>(null);
@@ -208,7 +213,8 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
   const produce = async () => {
     setErr(null); setBusy(true);
     try {
-      const production: VlogProduction = { title: meta.title, story, caption: meta.caption, hashtags: meta.hashtags, scenes };
+      const useStills = format === "hybrid" && economy && !singleTake;
+      const production: VlogProduction = { title: meta.title, story, caption: meta.caption, hashtags: meta.hashtags, scenes: useStills ? scenes.map((sc) => (sc.mode === "voiceover" ? { ...sc, visual: "still" as const } : sc)) : scenes };
       const chosen: Record<string, LocationScope> = {};
       decors.forEach((d) => { if (d.isNew) chosen[d.key] = d.scope; });
       const r = await api.vlogProduce(avatarId, production, chosen, videoModel, resolution, { format, talkProvider, singleTake, inserts: broll });
@@ -455,9 +461,14 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
                 <label className="flex items-center gap-1.5 text-slate-500" title="Inserts photo pendant la parole et plans de coupe rendus séparément. Désactivé par défaut : une seule prise, même tenue, même voix.">
                   <input type="checkbox" checked={broll} onChange={(e) => { setBroll(e.target.checked); if (!e.target.checked) setSingleTake(true); }} /> B-roll (inserts photo, plans de coupe)
                 </label>
+                {broll && format === "hybrid" && (
+                  <label className="flex items-center gap-1.5 text-emerald-700" title="Les plans de coupe deviennent des images animées (décor avec l'influenceur, en cache → 0 crédit) au lieu de clips vidéo. Les plans parlés restent en vidéo.">
+                    <input type="checkbox" checked={economy} onChange={(e) => { setEconomy(e.target.checked); if (e.target.checked) setSingleTake(false); }} /> Économique : coupes en images animées
+                  </label>
+                )}
                 {broll && (<>
                 <span className="text-slate-400">Réalisation</span>
-                <button onClick={() => setSingleTake(true)} className={`px-2.5 py-1.5 rounded-lg border ${singleTake ? "border-accent bg-accent text-white" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`} title="Un seul rendu de 20-30 s : même tenue, même voix, coupes internes entre 3-5 angles">Prise unique (recommandé)</button>
+                <button onClick={() => { setSingleTake(true); setEconomy(false); }} className={`px-2.5 py-1.5 rounded-lg border ${singleTake ? "border-accent bg-accent text-white" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`} title="Un seul rendu de 20-30 s : même tenue, même voix, coupes internes entre 3-5 angles">Prise unique (recommandé)</button>
                 <button onClick={() => setSingleTake(false)} className={`px-2.5 py-1.5 rounded-lg border ${!singleTake ? "border-accent bg-accent text-white" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`} title="Plans parlés courts et plans de coupe rendus séparément, puis montés : plus de rythme, risque de ruptures entre plans">Montage en plans</button>
                 <span className="text-slate-400">{singleTake ? "un seul rendu, le modèle coupe lui-même entre les angles" : "chaque plan est un rendu séparé"}</span>
                 </>)}
@@ -667,7 +678,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
                 {talkProviders.map((p) => (
                   <button key={p.id} onClick={() => setTalkProvider(p.id)} title={p.hint}
                     className={`text-xs px-2.5 py-1.5 rounded-lg border ${talkProvider === p.id ? "border-accent bg-accent text-white" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
-                    {p.label} · {p.price_per_sec.std.toFixed(3)} $/s
+                    {p.label} · {fmtCreditsFine(p.price_per_sec.std, "/s")}
                   </button>
                 ))}
               </div>
@@ -709,7 +720,7 @@ export function VlogWizard({ avatarId, onClose, onLaunched }: { avatarId: string
                       className={`text-left rounded-lg border p-2.5 transition ${videoModel === m.id ? "border-accent bg-accent/5" : "border-slate-200 hover:border-accent/40"}`}>
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-medium text-ink truncate">{m.label}</span>
-                        {unit != null && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 shrink-0">{unit.toFixed(3)} $/s</span>}
+                        {unit != null && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 shrink-0">{fmtCreditsFine(unit, "/s")}</span>}
                       </div>
                       <div className="text-[11px] text-slate-400 truncate">{m.hint}</div>
                     </button>

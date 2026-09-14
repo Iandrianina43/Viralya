@@ -1,4 +1,5 @@
 import { MediaButton } from "../components/MediaViewer";
+import { fmtCreditsFine } from "../lib/credits";
 import { ChevronDown, ChevronRight, Clapperboard, ExternalLink, RotateCcw, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -181,7 +182,7 @@ export function Tasks() {
                       <span>{t.subtitle}</span>
                       {t.job && t.state === "running" && <span>Étape : {t.job.label}{t.job.attempts > 1 ? ` (essai ${t.job.attempts}/${t.job.max_attempts})` : ""}</span>}
                       {t.scheduled_at && t.state === "upcoming" && <span>Prévu {relative(t.scheduled_at)}</span>}
-                      {t.cost_usd != null && <span className="font-mono text-cost">≈ {t.cost_usd.toFixed(2)} $</span>}
+                      {t.cost_usd != null && <span className="font-mono text-cost">{fmtCreditsFine(t.cost_usd)}</span>}
                       <span>{relative(t.updated_at)}</span>
                     </div>
                     {t.state === "running" && <div className="mt-2 max-w-md"><ProgressBar value={t.progress} /></div>}

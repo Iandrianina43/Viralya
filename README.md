@@ -116,6 +116,14 @@ Toute lecture d'un influenceur ou d'un contenu vérifie l'appartenance à cette 
   styles du site + Google Fonts, images/médias en https, aucun cadre.
 - `GET /api/auth/admin/users?q=&limit=` (admin) parcourt tous les comptes Supabase (pagination interne) et
   filtre sur l'e-mail ou le nom.
+- Lieux de vie : `PATCH /api/avatars/:id/locations/:locId {name, description, ref_image_url}` (vraie photo envoyée
+  via `/api/studio/upload-image`), `POST …/locations {with_image: false}` pour créer un lieu sans image générée,
+  `POST …/locations/:locId/regenerate {prompt}` régénère avec une consigne.
+- Analyse du profil (migration 0023) : `GET/POST /api/calendar/avatars/:id/strategy` → ce qu'il fait, vend, à qui,
+  piliers, réseaux, cadence, mix, thème et arcs du mois ; le stratège du calendrier la lit ; « Proposer le planning »
+  lance la génération du mois avec ces réglages.
+- Vlog économique : dans l'assistant vlog (montage en plans séparés), « coupes en images animées » rend les plans de
+  coupe en images (keyframe du décor avec l'influenceur, en cache → 0 crédit ; sinon ≈ 1 crédit) au lieu de clips.
 - Chaque réponse porte `x-request-id` (repris de la requête s'il est fourni) ; le journal serveur écrit une ligne
   `http_request` par appel `/api` (méthode, chemin, statut, durée, utilisateur, organisation) et `job_done`
   avec le coût cumulé du contenu.

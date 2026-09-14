@@ -1,4 +1,5 @@
 import { Check, Copy, ExternalLink, ImageIcon, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { fmtCredits, fmtCreditsFine } from "../lib/credits";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, type Avatar, type LaunchBanner, type LaunchKit, type LaunchNetwork } from "../api";
@@ -20,7 +21,8 @@ const PRIORITY: Record<string, { label: string; cls: string }> = {
   secondaire: { label: "Secondaire", cls: "bg-accent-light text-accent" },
   plus_tard: { label: "Plus tard", cls: "bg-slate-100 text-slate-500" },
 };
-const usd = (n: number) => `${n.toFixed(2).replace(".", ",")} $`;
+// Tous les prix en crédits (demande de Jérôme, 14 sept.) : jamais de dollars sur un écran client.
+const usd = (n: number) => fmtCreditsFine(n);
 
 function CopyButton({ text, label = "Copier" }: { text: string; label?: string }) {
   const toast = useToast();
@@ -255,8 +257,8 @@ export function Launch() {
               <datalist id="hooks">{(identity.hooks ?? []).map((h) => <option key={h} value={h} />)}</datalist>
             </label>
           </div>
-          <Button loading={busy === "banner"} onClick={() => setConfirm({ title: `Générer la bannière ${rules[bannerNet].label} ?`, message: `Image en 2K${withAvatar ? " avec ses références validées" : ""} : ≈ ${estimate != null ? usd(estimate) : "0,10 $"}. Le visage est demandé au centre, mais l'IA ne le garantit pas : vérifie l'aperçu avec la zone sûre et relance si besoin.`, run: () => void generateBanner() })}>
-            <ImageIcon className="w-4 h-4" /> Générer{estimate != null ? ` · ≈ ${usd(estimate)}` : ""}
+          <Button loading={busy === "banner"} onClick={() => setConfirm({ title: `Générer la bannière ${rules[bannerNet].label} ?`, message: `Image en 2K${withAvatar ? " avec ses références validées" : ""} : ${estimate != null ? usd(estimate) : fmtCredits(0.1)}. Le visage est demandé au centre, mais l'IA ne le garantit pas : vérifie l'aperçu avec la zone sûre et relance si besoin.`, run: () => void generateBanner() })}>
+            <ImageIcon className="w-4 h-4" /> Générer{estimate != null ? ` · ${usd(estimate)}` : ""}
           </Button>
         </div>
         {bannerSpec && <p className="text-xs text-slate-500 mt-2">{rules[bannerNet].label} : {bannerSpec.note}</p>}

@@ -168,7 +168,7 @@ export function Ugc() {
                 {estimate ? (
                   <>
                     <div className="font-semibold text-ink">{estimate.variants} variante{estimate.variants > 1 ? "s" : ""}</div>
-                    <div className="text-xs text-slate-500">Scripts ≈ {estimate.scripts_cost_usd.toFixed(2)} $ maintenant · vidéos ≈ {estimate.production_cost_usd.toFixed(2)} $ si tu produis tout (à la demande, variante par variante).</div>
+                    <div className="text-xs text-slate-500">Scripts {fmtCredits(estimate.scripts_cost_usd)} maintenant · vidéos {fmtCredits(estimate.production_cost_usd)} si tu produis tout (à la demande, variante par variante).</div>
                   </>
                 ) : <div className="text-xs text-slate-400">Estimation…</div>}
               </div>
@@ -211,7 +211,7 @@ export function Ugc() {
                       <div className="text-[11px] text-slate-400 font-mono truncate">{v.label} · {avatarName(v.avatar_id)} · {v.angle} · {v.duration_sec} s · {words(v)} mots{v.script.hook_type ? ` · ${v.script.hook_type}` : ""}</div>
                     </div>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full ${STATUS[v.status]?.cls}`}>{STATUS[v.status]?.label}</span>
-                    <span className="text-xs text-slate-500">≈ {(resolution === "1080p" ? v.est_cost_usd * 2.2 : v.est_cost_usd).toFixed(2)} $</span>
+                    <span className="text-xs text-slate-500">{fmtCredits(resolution === "1080p" ? v.est_cost_usd * 2.2 : v.est_cost_usd)}</span>
                     {v.status === "generating" ? <Loader2 className="w-4 h-4 animate-spin text-amber-500" /> : v.content_item_id ? <Link to="/content" className="text-xs text-accent hover:underline">voir le contenu →</Link> : v.status !== "archived" && <Button size="sm" loading={busy === v.id} onClick={() => void produce(v)} icon={<Sparkles className="w-3.5 h-3.5" />}>Produire</Button>}
                     <button onClick={() => void archive(v)} className="text-slate-300 hover:text-slate-600" title={v.status === "archived" ? "Réactiver" : "Archiver"}><X className="w-3.5 h-3.5" /></button>
                   </div>

@@ -182,7 +182,8 @@ avatarsRouter.post(
     if (name.length < 2 || description.length < 10) throw badRequest("name et description requis");
     const key = (String(req.body?.key ?? "") || name).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40);
     const { createLocation } = await import("../domain/locations");
-    res.status(201).json({ location: await createLocation(avatarId, { key, name, description }, true) });
+    // with_image: false → l'utilisateur fournit une vraie photo ensuite (PATCH), aucune image générée.
+    res.status(201).json({ location: await createLocation(avatarId, { key, name, description }, req.body?.with_image !== false) });
   }),
 );
 
@@ -196,6 +197,17 @@ avatarsRouter.post(
     const { regenerateLocationImage } = await import("../domain/locations");
     const refinement = typeof req.body?.prompt === "string" ? req.body.prompt : undefined;
     res.json({ location: await regenerateLocationImage(avatarId, String(req.params.locId), refinement) });
+  }),
+);
+
+// Modifier un lieu : nom, description, ou image réelle (photo envoyée via /studio/upload-image, URL canonique).
+avatarsRouter.patch(
+  "/:id/locations/:locId",
+  asyncHandler(async (req, res) => {
+    const avatarId = String(req.params.id);
+    await requireAvatar(req.org!.id, avatarId, "id");
+    const { updateLocation } = await import("../domain/locations");
+    res.json({ location: await updateLocation(avatarId, String(req.params.locId), { name: req.body?.name, description: req.body?.description, ref_image_url: req.body?.ref_image_url }) });
   }),
 );
 
