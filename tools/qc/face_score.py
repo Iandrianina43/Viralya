@@ -69,16 +69,19 @@ class Scorer:
         l'image) : SFace devient peu fiable sous ~12 % (plan large, profil)."""
         faces = self.faces(img)
         if len(faces) == 0:
-            return None, 0, None
+            return None, 0, None, None
         # Au plus 8 visages, les plus grands d'abord (le sujet est rarement minuscule).
         cands = sorted(faces, key=lambda f: -float(f[2]) * float(f[3]))[:8]
-        best, best_h = None, None
+        best, best_h, best_c = None, None, None
         img_h = float(img.shape[0])
+        img_w = float(img.shape[1])
         for f in cands:
             sc = float(self.rec.match(ref_feat, self.feature(img, f), cv2.FaceRecognizerSF_FR_COSINE))
             if best is None or sc > best:
                 best, best_h = sc, float(f[3]) / img_h
-        return best, int(len(faces)), best_h
+                # Centre du visage (fractions) : sert au recadrage des bannieres (kit de lancement).
+                best_c = [(float(f[0]) + float(f[2]) / 2) / img_w, (float(f[1]) + float(f[3]) / 2) / img_h]
+        return best, int(len(faces)), best_h, best_c
 
 
 def main():
@@ -104,7 +107,7 @@ def main():
                 row["face_score"] = None
                 continue
             try:
-                sc, n, fh = s.score(ref_feat, load_image(url))
+                sc, n, fh, _fc = s.score(ref_feat, load_image(url))
             except Exception as e:  # noqa: BLE001
                 sc, n, fh = None, 0, None
                 row["face_error"] = str(e)
@@ -119,8 +122,8 @@ def main():
 
     for c in args.candidates:
         try:
-            sc, n, fh = s.score(ref_feat, load_image(c))
-            print(json.dumps({"url": c, "score": sc, "faces": n, "face_h": fh, "same": sc is not None and sc >= THRESHOLD}, ensure_ascii=False))
+            sc, n, fh, fc = s.score(ref_feat, load_image(c))
+            print(json.dumps({"url": c, "score": sc, "faces": n, "face_h": fh, "face_c": fc, "same": sc is not None and sc >= THRESHOLD}, ensure_ascii=False))
         except Exception as e:  # noqa: BLE001
             print(json.dumps({"url": c, "error": str(e)}, ensure_ascii=False), file=sys.stderr)
 

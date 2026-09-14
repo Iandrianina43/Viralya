@@ -109,11 +109,18 @@ function ff(args: string[], cwd: string): Promise<void> {
  * Compose la bannière : image source recadrée à la taille du réseau (recadrage centré) + accroche
  * dans la zone sûre. Sans accroche : simple recadrage. Renvoie un JPEG (qualité ≈ 90 %).
  */
-export async function composeBanner(source: Buffer, spec: BannerSpec, hook: string | null): Promise<Buffer> {
+export async function composeBanner(source: Buffer, spec: BannerSpec, hook: string | null, opts: { anchorY?: number | null } = {}): Promise<Buffer> {
   const dir = await mkdtemp(join(tmpdir(), "viralya-banner-"));
   try {
     await writeFile(join(dir, "src.img"), source);
-    const filters = [`scale=${spec.w}:${spec.h}:force_original_aspect_ratio=increase`, `crop=${spec.w}:${spec.h}`];
+    // Recadrage : la source (16:9 ou 4:3) est mise à l'échelle sur la largeur, puis on choisit la fenêtre verticale.
+    // anchorY = fraction de la hauteur SOURCE (ex. centre du visage) à amener au centre de la zone sûre ;
+    // sans repère : fenêtre centrée. `ih` = hauteur après mise à l'échelle ; y borné dans [0, ih-h].
+    const safeMid = spec.safe.y + spec.safe.h / 2;
+    const y = typeof opts.anchorY === "number" && Number.isFinite(opts.anchorY)
+      ? `'min(max(ih*${opts.anchorY.toFixed(4)}-${safeMid},0),ih-${spec.h})'`
+      : `(ih-${spec.h})/2`;
+    const filters = [`scale=${spec.w}:${spec.h}:force_original_aspect_ratio=increase`, `crop=${spec.w}:${spec.h}:0:${y}`];
     if (hook && hook.trim()) {
       await mkdir(join(dir, "fonts"), { recursive: true });
       await copyFile(join(FONTS_DIR, FONT_FILE), join(dir, "fonts", FONT_FILE));

@@ -30,6 +30,8 @@ export interface FaceScore {
   faces: number;
   /** Hauteur du visage retenu / hauteur de l'image (null si inconnue). */
   faceHeight: number | null;
+  /** Centre du visage retenu [x, y] en fractions de l'image (null si inconnu). */
+  faceCenter: [number, number] | null;
   verdict: QcVerdict;
   /** Pourquoi le verdict a été adouci (ex. visage trop petit pour être fiable). */
   note?: string;
@@ -50,7 +52,7 @@ export function smallFace(faceHeight: number | null | undefined): boolean {
 
 /** Score chaque candidat contre le portrait de référence. Jamais bloquant. */
 export async function faceScores(refUrl: string, candidates: string[], timeoutMs = 180_000): Promise<FaceScore[]> {
-  const unknown = (error: string): FaceScore[] => candidates.map((url) => ({ url, score: null, faces: 0, faceHeight: null, verdict: "unknown", error }));
+  const unknown = (error: string): FaceScore[] => candidates.map((url) => ({ url, score: null, faces: 0, faceHeight: null, faceCenter: null, verdict: "unknown", error }));
   if (!candidates.length) return [];
   // Bucket privé : le script Python télécharge par HTTP → URLs signées ; les résultats sont ramenés aux URLs d'origine.
   const [signedRef, ...signedCandidates] = await signUrls([refUrl, ...candidates], SIGN_TTL.provider);
@@ -77,7 +79,7 @@ export async function faceScores(refUrl: string, candidates: string[], timeoutMs
         const t = line.trim();
         if (!t.startsWith("{")) continue;
         try {
-          const j = JSON.parse(t) as { url?: string; score?: number | null; faces?: number; face_h?: number | null; error?: string };
+          const j = JSON.parse(t) as { url?: string; score?: number | null; faces?: number; face_h?: number | null; face_c?: [number, number] | null; error?: string };
           if (!j.url) continue;
           j.url = originalOf.get(j.url) ?? j.url;
           const faceHeight = typeof j.face_h === "number" ? j.face_h : null;
@@ -88,6 +90,7 @@ export async function faceScores(refUrl: string, candidates: string[], timeoutMs
             score: j.score ?? null,
             faces: j.faces ?? 0,
             faceHeight,
+            faceCenter: Array.isArray(j.face_c) && j.face_c.length === 2 ? [Number(j.face_c[0]), Number(j.face_c[1])] : null,
             verdict,
             ...(softened ? { note: `visage petit (${Math.round(faceHeight! * 100)} % de la hauteur) : score peu fiable, à vérifier à l'œil` } : {}),
             ...(j.error ? { error: j.error } : {}),
@@ -99,7 +102,7 @@ export async function faceScores(refUrl: string, candidates: string[], timeoutMs
         resolveP(unknown(err.trim().split(/\r?\n/).pop()?.slice(0, 200) || "qc_no_output"));
         return;
       }
-      resolveP(candidates.map((url) => byUrl.get(url) ?? { url, score: null, faces: 0, faceHeight: null, verdict: "unknown", error: "qc_missing" }));
+      resolveP(candidates.map((url) => byUrl.get(url) ?? { url, score: null, faces: 0, faceHeight: null, faceCenter: null, verdict: "unknown", error: "qc_missing" }));
     });
   });
 }

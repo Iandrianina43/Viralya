@@ -3,6 +3,7 @@ import { BANNER_SPECS, composeBanner, HOOK_MAX_CHARS, type BannerSpec } from "..
 import { HttpError, notFound } from "../lib/httpError";
 import { downloadMedia, extractJson, storagePathOf, uploadBytes } from "../lib/storage";
 import { removePaths } from "../lib/storageCleanup";
+import { faceScores } from "../lib/qc";
 import { logger } from "../logger";
 import { generateText } from "../providers/llm";
 import { estimateImageCost, piapiImageToStorage, type PiapiImageModel } from "../providers/piapiImage";
@@ -320,7 +321,7 @@ function bannerPrompt(avatar: LaunchAvatar, spec: BannerSpec, scene: string, wit
   return [
     identityBlock(avatar),
     refCount ? `The ${refCount} reference images show this exact person: keep the same face, hair and skin, no change of identity.` : "",
-    `Wide 16:9 banner photograph. ${p.subj} stands in the ${subjectSide} third of the frame, medium shot from the waist up, face at the exact vertical center of the frame, looking at the camera with a natural confident smile, outfit true to ${p.poss} style. Background: ${decor}, softly blurred. The ${spec.textSide} half of the frame is calm and uncluttered (space for a title). Nothing important in the top and bottom quarters. No text, no letters, no logos, no watermark.`,
+    `Wide banner photograph. ${p.subj} stands in the ${subjectSide} third of the frame, medium-wide shot from the waist up, the head takes less than a fifth of the image height, generous empty space above the head, looking at the camera with a natural confident smile, outfit true to ${p.poss} style. Background: ${decor}, softly blurred. The ${spec.textSide} half of the frame is calm and uncluttered (space for a title). No text, no letters, no logos, no watermark.`,
   ].filter(Boolean).join("\n");
 }
 
@@ -333,9 +334,18 @@ export async function generateBanner(avatar: LaunchAvatar, opts: { network: Bann
   if (opts.withAvatar && !refs.length) throw new HttpError(409, "Aucun portrait validé pour cet influenceur : génère d'abord ses références dans la Bible, ou choisis « univers seul ».");
   const { model } = bannerEstimate(avatar, opts.withAvatar);
   const scene = String(row.identity?.banner_scene_en ?? "");
-  const gen = await piapiImageToStorage({ prompt: bannerPrompt(avatar, spec, scene, opts.withAvatar, refs.length), refs, model, aspect: "16:9", quality: "2K" }, `${avatar.id}/launch/bg-${opts.network}-${Date.now()}`);
+  // Avec l'influenceur : fond en 4:3 (plus haut que la bannière) puis fenêtre 16:9 choisie pour que le VISAGE tombe au
+  // centre de la zone sûre — le modèle ne respecte pas « visage au centre » (test du 14 sept. : visage dans le tiers haut).
+  const gen = await piapiImageToStorage({ prompt: bannerPrompt(avatar, spec, scene, opts.withAvatar, refs.length), refs, model, aspect: opts.withAvatar ? "4:3" : "16:9", quality: "2K" }, `${avatar.id}/launch/bg-${opts.network}-${Date.now()}`);
   const { bytes } = await downloadMedia(gen.imageUrl);
-  const composed = await composeBanner(bytes, spec, hook);
+  let anchorY: number | null = null;
+  let faceNote: string | null = null;
+  if (opts.withAvatar) {
+    const [fs] = await faceScores(refs[0]!, [gen.imageUrl], 60_000).catch(() => []);
+    if (fs?.faceCenter) anchorY = fs.faceCenter[1];
+    else faceNote = "visage non détecté : recadrage centré";
+  }
+  const composed = await composeBanner(bytes, spec, hook, { anchorY });
   const url = await uploadBytes(`${avatar.id}/launch/banner-${opts.network}-${Date.now()}.jpg`, composed, "image/jpeg");
   const banner: LaunchBanner = { id: randomUUID(), network: opts.network, url, hook, with_avatar: opts.withAvatar, cost_usd: Math.round(gen.cost * 1000) / 1000, created_at: new Date().toISOString() };
   const fresh = await readRow(avatar.id);
@@ -343,7 +353,7 @@ export async function generateBanner(avatar: LaunchAvatar, opts: { network: Bann
   // Le fond brut ne sert plus : on garde la bannière composée seulement.
   const bgPath = storagePathOf(gen.imageUrl);
   if (bgPath) await removePaths([bgPath]).catch(() => 0);
-  logger.info("launch_banner_generated", { avatarId: avatar.id, network: opts.network, withAvatar: opts.withAvatar, cost: gen.cost, ms: gen.ms });
+  logger.info("launch_banner_generated", { avatarId: avatar.id, network: opts.network, withAvatar: opts.withAvatar, cost: gen.cost, ms: gen.ms, anchorY, faceNote });
   return banner;
 }
 
