@@ -299,16 +299,17 @@ export function Dashboard() {
             ) : (
               <div className="space-y-2">
                 {computed.review.slice(0, 4).map((c) => {
-                  const a = c.assets as { image_url?: string; keyframe_url?: string };
+                  // Vidéo hybride : ni image_url ni keyframe_url à la racine → première image d'un plan (keyframe ou coupe).
+                  const a = c.assets as { image_url?: string; keyframe_url?: string; shots?: Array<{ image_url?: string | null; keyframe_url?: string | null }> };
                   const p = c.payload as { caption?: string; theme?: string };
-                  const img = a.image_url || a.keyframe_url;
+                  const img = a.image_url || a.keyframe_url || a.shots?.find((s) => s.keyframe_url || s.image_url)?.keyframe_url || a.shots?.find((s) => s.image_url)?.image_url;
                   return (
                     <Link key={c.id} to="/content" className="flex items-center gap-2.5 rounded-xl p-1.5 -mx-1.5 hover:bg-slate-50 transition">
                       <div className="w-9 h-12 rounded-lg overflow-hidden bg-slate-100 shrink-0 flex items-center justify-center">
                         {img ? <img src={img} alt="" loading="lazy" className="w-full h-full object-cover" /> : c.type === "video" ? <Video className="w-4 h-4 text-slate-300" /> : <ImageIcon className="w-4 h-4 text-slate-300" />}
                       </div>
                       <div className="min-w-0">
-                        <div className="text-sm text-slate-700 truncate">{p.theme || p.caption || c.type}</div>
+                        <div className="text-sm text-slate-700 truncate">{c.title || p.theme || p.caption || c.type}</div>
                         <div className="text-xs text-slate-400 truncate">{avatarName.get(c.avatar_id) ?? "—"} · {c.type} · {c.network}</div>
                       </div>
                     </Link>
