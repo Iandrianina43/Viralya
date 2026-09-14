@@ -1,4 +1,4 @@
-import { Building2, CalendarDays, ChevronDown, ClipboardCheck, Coins, Compass, LayoutDashboard, ListChecks, LogOut, Megaphone, Menu, Plus, Settings as SettingsIcon, Users, X } from "lucide-react";
+import { Building2, CalendarDays, ChevronDown, ClipboardCheck, Coins, LayoutDashboard, ListChecks, LogOut, Megaphone, Menu, Plus, Settings as SettingsIcon, Users, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth";
@@ -22,11 +22,10 @@ import { Studio } from "./pages/Studio";
 import { Tasks } from "./pages/Tasks";
 import { Upcoming } from "./pages/Upcoming";
 import { useBilling } from "./lib/credits";
+import { Guide } from "./components/Guide";
 import { Welcome } from "./pages/Welcome";
-import { welcomeSeen } from "./lib/journey";
 
 const NAV = [
-  { to: "/bienvenue", label: "Guide", icon: Compass },
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/avatars", label: "Influenceurs", icon: Users },
   { to: "/calendar", label: "Calendrier", icon: CalendarDays },
@@ -200,8 +199,7 @@ function Shell() {
   // Pages légales : publiques (liens depuis l'inscription et le pied de page).
   if (location.pathname === "/cgu" || location.pathname === "/confidentialite") return <Legal page={location.pathname === "/cgu" ? "cgu" : "privacy"} />;
   if (!user) return <Login />;
-  // Première connexion : le guide de démarrage s'ouvre une fois, puis reste dans le menu.
-  if (!welcomeSeen() && location.pathname !== "/bienvenue") return <Navigate to="/bienvenue" replace />;
+  // Le guide de démarrage flotte sur toutes les pages (components/Guide.tsx) ; /bienvenue reste accessible par lien.
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -222,6 +220,7 @@ function Shell() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <TopLoader />
         <Topbar onMenu={() => setDrawer(true)} />
+        <Guide />
         <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-8 sm:py-7">
           <div className="max-w-6xl mx-auto">
             <Routes>

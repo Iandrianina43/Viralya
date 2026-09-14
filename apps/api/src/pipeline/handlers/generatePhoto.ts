@@ -100,6 +100,8 @@ export async function generatePhotoJob(job: JobRow): Promise<void> {
     qc: { face_score: qc?.score ?? null, faces: qc?.faces ?? 0, face_height: qc?.faceHeight ?? null, verdict, attempt, ...(qc?.note ? { note: qc.note } : {}) },
   });
   await saveQcReport({ targetType: "content", targetId: id, avatarId: avatar.id, checks: { face_score: qc?.score ?? null, faces: qc?.faces ?? 0, face_height: qc?.faceHeight ?? null, model, attempt }, score: qc?.score ?? null, passed: verdict === "pass", notes: qc?.note });
+  // Coût réel (audit P2) : chaque image payée remplace l'estimation fixe de la photo.
+  { const { settleUsage } = await import("../../domain/billing"); await settleUsage(id, Math.round((Number(item.assets.estimated_cost_usd ?? 0) + (cost || estimated)) * 1000) / 1000); }
 
   if (verdict === "fail" && attempt <= MAX_AUTO_RETRIES) {
     await jobLog(job, `Visage non reconnu (score ${qc?.score?.toFixed(2) ?? "?"}) — nouvelle génération automatique`, 75);

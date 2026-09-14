@@ -91,11 +91,10 @@ corrigé le jour même, ce qui reste à faire par priorité, et ce qui dépend d
 ### P2 — important
 - Fusion des relances : un rendu qui dépasse le délai de suivi (25 min) est marqué en échec alors
   que les clips peuvent encore arriver → re-vérifier les tâches avant d'échouer.
-- Coûts réels pour les photos / carrousels (aujourd'hui estimation fixe non réconciliée).
+- ~~Coûts réels pour les photos~~ (fait le 14 sept. : chaque image payée remplace l'estimation) ; carrousels et stories restent à l'estimation fixe.
 - ~~Barre d'onglets par influenceur, entrée « Calendrier » dans le menu (page `/calendar` sur `GET /calendar/upcoming`), reste de crédits dans la barre du haut et estimations en crédits avant de lancer~~ — fait le 14 sept.
-- États de chargement (tableau de bord, influenceurs, campagnes, journal) et accessibilité des
-  modales (rôle dialog, Échap, focus).
-- Grille du calendrier et panneau latéral sur mobile ; zone d'actions des cartes influenceur.
+- ~~Accessibilité des modales (rôle dialog, Échap, focus, retour du focus)~~ — fait le 14 sept. États de chargement : faits le 7 sept.
+- ~~Grille du calendrier et panneau latéral sur mobile~~ (fait le 14 sept. : liste par jour sous 640 px, panneau en feuille du bas) ; zone d'actions des cartes influenceur.
 - Journalisation des requêtes (identifiant de requête, coût par job) ; `max_attempts` par type de job.
 - `Content-Security-Policy` ; jeton en cookie httpOnly plutôt qu'en localStorage.
 - Recherche d'utilisateur par e-mail sans parcourir tout l'annuaire (au-delà de 1 000 comptes).

@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 
 // Modal générique premium (overlay flouté + carte centrée).
 export function Modal({
@@ -15,15 +15,37 @@ export function Modal({
   children: ReactNode;
   maxWidth?: string;
 }) {
+  const titleId = useId();
+  const panel = useRef<HTMLDivElement>(null);
+  // Accessibilité (audit P2) : Échap ferme, le focus entre dans la modale à l'ouverture et revient à l'élément
+  // déclencheur à la fermeture ; Tab reste à l'intérieur.
+  useEffect(() => {
+    if (!open) return;
+    const before = document.activeElement as HTMLElement | null;
+    const focusables = () => Array.from(panel.current?.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])') ?? []).filter((el) => !el.hasAttribute("disabled"));
+    const first = focusables().find((el) => !el.closest("[data-modal-close]")) ?? focusables()[0];
+    (first ?? panel.current)?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.stopPropagation(); onClose(); return; }
+      if (e.key !== "Tab") return;
+      const list = focusables();
+      if (!list.length) return;
+      const firstEl = list[0]!, lastEl = list[list.length - 1]!;
+      if (e.shiftKey && document.activeElement === firstEl) { e.preventDefault(); lastEl.focus(); }
+      else if (!e.shiftKey && document.activeElement === lastEl) { e.preventDefault(); firstEl.focus(); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("keydown", onKey); before?.focus?.(); };
+  }, [open, onClose]);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative bg-white rounded-2xl shadow-card ${maxWidth} w-full max-h-[90vh] flex flex-col overflow-hidden`} style={{ animation: "modalIn .16s ease-out" }}>
+      <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined} className={`relative bg-white rounded-2xl shadow-card ${maxWidth} w-full max-h-[90vh] flex flex-col overflow-hidden outline-none`} style={{ animation: "modalIn .16s ease-out" }}>
         {title && (
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
-            <div className="font-semibold text-ink">{title}</div>
-            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"><X className="w-4 h-4" /></button>
+            <div id={titleId} className="font-semibold text-ink">{title}</div>
+            <button onClick={onClose} data-modal-close className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100" aria-label="Fermer"><X className="w-4 h-4" /></button>
           </div>
         )}
         <div className="px-5 py-4 overflow-y-auto">{children}</div>

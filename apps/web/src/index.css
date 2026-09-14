@@ -65,6 +65,11 @@ h1, h2, h3, h4 {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 
+/* Guide flottant : le bonhomme respire doucement. */
+@keyframes guide-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+.guide-mascot { display: inline-flex; animation: guide-bob 2.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .guide-mascot { animation: none; } }
+
 /* Barre de chargement globale (TopLoader) : va-et-vient indéterminé. */
 @keyframes viralya-top-loader { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
 .top-loader-bar { animation: viralya-top-loader 1.1s ease-in-out infinite; }

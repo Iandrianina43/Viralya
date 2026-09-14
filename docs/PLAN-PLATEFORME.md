@@ -94,6 +94,14 @@ facture Stripe payée ou au mois calendaire), Checkout en CHF avec setup en lign
 paiement unique, garde-fous par forfait (influenceurs, réseaux connectés, pilote automatique), écran
 Paramètres › Abonnement et crédits. Non testé en réel : le passage en caisse Stripe (clé absente).
 
-## 10. Reste à faire (audit du 7 sept., voir docs/AUDIT-PROD.md)
+## 10. Guide flottant (14 sept., demande de Jérôme)
+
+L'onboarding n'est plus une page : `components/Guide.tsx` flotte en bas à droite de toutes les pages avec un
+petit personnage (SVG, charte Viralya) et une bulle « Prochaine étape ». Le panneau détaille l'étape (quoi,
+comment, où, coût) à partir de `lib/journey.ts` (huit étapes cochées d'après les données réelles) et suit la
+page ouverte (Studio → Génération, Bible → Univers…). « Plus tard » replie, « Ne plus afficher » masque
+(navigateur). La page /bienvenue reste accessible par lien mais n'est plus imposée ni dans le menu.
+
+## 11. Reste à faire (audit du 7 sept., voir docs/AUDIT-PROD.md)
 
 Voir l'audit complet : UX/UI, gestion des organisations, robustesse, données, coûts.

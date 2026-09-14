@@ -5,7 +5,6 @@ import { api, type Avatar, type ContentItem, type PiapiBalance, type PiapiHistor
 import { useAuth } from "../auth";
 import { AvatarPhoto } from "../components/AvatarPhoto";
 import { MediaButton } from "../components/MediaViewer";
-import { Onboarding } from "../components/Onboarding";
 
 import { Skeleton, SkeletonList, SkeletonStats } from "../components/ui";
 // ─────────────────────────────────────────────────────────────
@@ -124,8 +123,6 @@ export function Dashboard() {
         </div>
       ) : (<>
 
-      {/* Onboarding intégré (BRIEF § 3) : huit étapes cochées d'après les données réelles. */}
-      <Onboarding avatars={avatars} content={content} />
 
       {/* KPIs */}
       {(() => {

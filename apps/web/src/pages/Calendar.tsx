@@ -239,7 +239,39 @@ export function Calendar() {
             </div>
           ) : null}
 
-          <div className="card overflow-hidden">
+          {/* Mobile : la grille 7 colonnes est illisible sous 640 px → liste des jours qui ont une entrée. */}
+          {!loading && plan && (
+            <div className="sm:hidden card divide-y divide-slate-100 mb-4">
+              {grid.filter((c) => c.day).map((c) => {
+                const list = byDay.get(c.day!) ?? [];
+                if (!list.length && c.day !== today()) return null;
+                return (
+                  <div key={c.day} className={`p-3 ${c.day === today() ? "bg-orange-50/50" : ""}`}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className={`text-xs font-semibold ${c.day === today() ? "text-accent" : "text-slate-500"}`}>{DOW[(new Date(`${c.day}T12:00:00`).getDay() + 6) % 7]} {c.n}</span>
+                      <button onClick={() => { setAdding(c.day!); setSelected(null); setDraft({ type: "photo", network: "instagram", slot: "midi", ratio_class: "value", title: "", brief: "" }); }} className="text-slate-400 hover:text-accent" aria-label={`Ajouter une entrée le ${c.n}`}><Plus className="w-4 h-4" /></button>
+                    </div>
+                    <div className="space-y-1">
+                      {list.map((e) => {
+                        const t = TYPE[e.type] ?? TYPE.photo;
+                        const Icon = t.icon;
+                        return (
+                          <button key={e.id} onClick={() => select(e)} className={`w-full text-left rounded-md border px-2 py-1.5 text-xs flex items-center gap-1.5 ${t.color} ${selected?.id === e.id ? "ring-2 ring-accent" : ""} ${e.status === "skipped" ? "opacity-40 line-through" : ""}`}>
+                            <Icon className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate flex-1">{e.title}</span>
+                            <span className="text-[10px] text-slate-400">{e.slot}</span>
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS[e.status]?.dot ?? "bg-slate-300"}`} />
+                          </button>
+                        );
+                      })}
+                      {!list.length && <div className="text-xs text-slate-400">Rien de prévu aujourd'hui.</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div className={`card overflow-hidden ${!loading && plan ? "hidden sm:block" : ""}`}>
             <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">{DOW.map((d) => <div key={d} className="px-2 py-1.5">{d}</div>)}</div>
             {loading ? (
               <div className="grid grid-cols-7" aria-busy="true">
@@ -287,7 +319,7 @@ export function Calendar() {
 
         {/* Panneau latéral : entrée sélectionnée ou ajout */}
         {(selected || adding) && (
-          <div className="card p-4 sticky top-4">
+          <div className="card p-4 lg:sticky lg:top-4 fixed inset-x-2 bottom-2 z-40 max-h-[75vh] overflow-y-auto shadow-2xl lg:static lg:inset-auto lg:max-h-none lg:shadow-card lg:z-auto">
             <div className="flex items-center justify-between mb-2">
               <div className="text-sm font-semibold text-ink">{adding ? `Nouvelle entrée · ${adding.slice(8)}/${adding.slice(5, 7)}` : `${selected!.day.slice(8)}/${selected!.day.slice(5, 7)} · ${selected!.slot}`}</div>
               <button onClick={() => { setSelected(null); setAdding(null); }} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
